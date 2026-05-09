@@ -57,82 +57,18 @@ function extractPortName(devicePath: string): string {
     .replace(/[/\\]+$/, '');
 }
 
-/* ─── USB via Windows Spooler com tipo RAW (ESC/POS passa sem modificação) ───
- *
- * print.exe trata o arquivo como texto e corrompe bytes binários ESC/POS.
- * A solução correta é usar a Win32 Spooler API com pDataType="RAW":
- * OpenPrinter → StartDocPrinter(RAW) → WritePrinter → EndDocPrinter.
- * O script PS1 é escrito em disco (não inline) para evitar falso positivo de AV.
- * Fallback automático para print.exe se PowerShell for bloqueado.
+/* ─── USB via Windows Spooler com print.exe ───
+ * print.exe é um utilitário built-in do Windows que envia arquivos para a fila
+ * de impressão sem spawnar PowerShell (não dispara antivírus).
+ * Aceita tanto nome de porta (USB001) quanto nome da impressora ("Epson TM-T20").
+ * Se printerName estiver preenchido, usa o nome — mais confiável com drivers instalados.
  */
-function rawWriteUsbRaw(printerName: string, data: Buffer, timeoutMs = 15000): Promise<void> {
-  const ts = Date.now();
-  const tmpData   = path.join(os.tmpdir(), `alf_${ts}.prn`);
-  const tmpScript = path.join(os.tmpdir(), `alf_${ts}.ps1`);
-
-  fs.writeFileSync(tmpData, data);
-
-  // Script usa Win32 P/Invoke via Add-Type — envia bytes RAW sem processamento pelo driver
-  const script = [
-    `param([string]$P,[string]$F)`,
-    `Add-Type -TypeDefinition @'`,
-    `using System;using System.Runtime.InteropServices;`,
-    `[StructLayout(LayoutKind.Sequential,CharSet=CharSet.Ansi)]`,
-    `public class DI{`,
-    `  [MarshalAs(UnmanagedType.LPStr)]public string pDocName;`,
-    `  [MarshalAs(UnmanagedType.LPStr)]public string pOutputFile;`,
-    `  [MarshalAs(UnmanagedType.LPStr)]public string pDataType;}`,
-    `public class WP{`,
-    `  [DllImport("winspool.Drv",SetLastError=true,CharSet=CharSet.Ansi)]public static extern bool OpenPrinter(string n,out IntPtr h,IntPtr d);`,
-    `  [DllImport("winspool.Drv",SetLastError=true)]public static extern bool ClosePrinter(IntPtr h);`,
-    `  [DllImport("winspool.Drv",SetLastError=true,CharSet=CharSet.Ansi)]public static extern int StartDocPrinter(IntPtr h,Int32 l,[In,MarshalAs(UnmanagedType.LPStruct)]DI d);`,
-    `  [DllImport("winspool.Drv",SetLastError=true)]public static extern bool EndDocPrinter(IntPtr h);`,
-    `  [DllImport("winspool.Drv",SetLastError=true)]public static extern bool StartPagePrinter(IntPtr h);`,
-    `  [DllImport("winspool.Drv",SetLastError=true)]public static extern bool EndPagePrinter(IntPtr h);`,
-    `  [DllImport("winspool.Drv",SetLastError=true)]public static extern bool WritePrinter(IntPtr h,IntPtr b,Int32 n,out Int32 w);}`,
-    `'@`,
-    `$b=[System.IO.File]::ReadAllBytes($F)`,
-    `$h=[IntPtr]::Zero`,
-    `$d=New-Object DI;$d.pDocName="ALF";$d.pDataType="RAW"`,
-    `if(![WP]::OpenPrinter($P,[ref]$h,[IntPtr]::Zero)){Write-Error "OpenPrinter falhou";exit 1}`,
-    `[WP]::StartDocPrinter($h,1,$d)|Out-Null`,
-    `[WP]::StartPagePrinter($h)|Out-Null`,
-    `$p=[System.Runtime.InteropServices.Marshal]::AllocHGlobal($b.Length)`,
-    `[System.Runtime.InteropServices.Marshal]::Copy($b,0,$p,$b.Length)`,
-    `$w=0;[WP]::WritePrinter($h,$p,$b.Length,[ref]$w)|Out-Null`,
-    `[System.Runtime.InteropServices.Marshal]::FreeHGlobal($p)`,
-    `[WP]::EndPagePrinter($h)|Out-Null`,
-    `[WP]::EndDocPrinter($h)|Out-Null`,
-    `[WP]::ClosePrinter($h)|Out-Null`,
-  ].join('\r\n');
-
-  fs.writeFileSync(tmpScript, script, 'utf8');
-
-  return new Promise((resolve, reject) => {
-    try {
-      execFileSync('powershell.exe', [
-        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-        '-File', tmpScript, '-P', printerName, '-F', tmpData,
-      ], { timeout: timeoutMs, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      resolve();
-    } catch (err: unknown) {
-      const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
-      const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
-      reject(new Error(`RAW print falhou em "${printerName}": ${detail || 'erro desconhecido'}`));
-    } finally {
-      try { fs.unlinkSync(tmpData);   } catch { /* ignora */ }
-      try { fs.unlinkSync(tmpScript); } catch { /* ignora */ }
-    }
-  });
-}
-
-/* Fallback: print.exe via spooler (funciona para drivers sem RAW, mas pode corromper ESC/POS) */
-function rawWriteUsbFallback(target: { port: string; printerName?: string }, data: Buffer, timeoutMs = 12000): Promise<void> {
+function rawWriteUsb(target: { port: string; printerName?: string }, data: Buffer, timeoutMs = 12000): Promise<void> {
   const targetName = (target.printerName && target.printerName.trim())
     ? target.printerName.trim()
     : extractPortName(target.port);
 
-  console.log('[printer] fallback print.exe → ', JSON.stringify(targetName));
+  console.log('[printer] rawWriteUsb via print.exe → ', JSON.stringify(targetName));
 
   const tmpFile = path.join(os.tmpdir(), `alf_${Date.now()}.prn`);
   fs.writeFileSync(tmpFile, data);
@@ -148,28 +84,11 @@ function rawWriteUsbFallback(target: { port: string; printerName?: string }, dat
     } catch (err: unknown) {
       const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
       const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
-      reject(new Error(`print.exe falhou em "${targetName}": ${detail || 'spooler indisponível'}`));
+      reject(new Error(`Falha ao imprimir em "${targetName}": ${detail || 'spooler indisponível'}`));
     } finally {
       try { fs.unlinkSync(tmpFile); } catch { /* ignora */ }
     }
   });
-}
-
-async function rawWriteUsb(target: { port: string; printerName?: string }, data: Buffer): Promise<void> {
-  const printerName = (target.printerName && target.printerName.trim())
-    ? target.printerName.trim()
-    : extractPortName(target.port);
-
-  console.log('[printer] rawWriteUsb RAW → ', JSON.stringify(printerName));
-
-  try {
-    await rawWriteUsbRaw(printerName, data);
-  } catch (rawErr) {
-    const rawMsg = rawErr instanceof Error ? rawErr.message : String(rawErr);
-    console.warn('[printer] RAW falhou, tentando print.exe:', rawMsg);
-    // Se PowerShell foi bloqueado (ex: antivírus), tenta print.exe
-    await rawWriteUsbFallback(target, data);
-  }
 }
 
 /* ─── TCP: escreve raw via net.Socket ─── */
@@ -265,7 +184,7 @@ async function printViaThermal(text: string, config: PrinterConfig, copies: numb
 
 interface RawPrinter { name: string; portName: string }
 
-/* PowerShell Get-Printer — mais confiável, funciona mesmo sem WMIC */
+/* PowerShell Get-Printer — leitura simples, não usa Add-Type/P-Invoke */
 function detectViaPowerShell(): RawPrinter[] {
   try {
     const cmd =
@@ -282,7 +201,7 @@ function detectViaPowerShell(): RawPrinter[] {
   } catch { return []; }
 }
 
-/* WMIC — fallback para versões antigas do Windows onde Get-Printer não existe */
+/* WMIC — fallback para Windows sem PowerShell ou Get-Printer */
 function detectViaWmic(): RawPrinter[] {
   try {
     const out = execSync('wmic printer get name,portname /format:csv', {
@@ -314,14 +233,12 @@ export function detectUsbPrinters(): DetectedPrinter[] {
   const result: DetectedPrinter[] = [];
   const seen = new Set<string>();
 
-  // Combina PowerShell + WMIC para máxima cobertura
   for (const p of [...detectViaPowerShell(), ...detectViaWmic()]) {
     if (seen.has(p.portName)) continue;
     seen.add(p.portName);
     result.push({ port: `//./${p.portName}`, portName: p.portName, label: `${p.name} — ${p.portName}` });
   }
 
-  // Probe direto nas portas USB001–USB005 como último recurso
   for (let i = 1; i <= 5; i++) {
     const pn = `USB${String(i).padStart(3, '0')}`;
     if (seen.has(pn)) continue;
