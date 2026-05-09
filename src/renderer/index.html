@@ -162,6 +162,7 @@
     }
     .test-result.ok   { background: #f0fdf4; color: #059669; display: block; }
     .test-result.fail { background: #fef2f2; color: #ef4444; display: block; }
+    .test-result.info { background: #eff6ff; color: #1e40af; display: block; }
 
     .detected-list {
       margin-top: 8px; display: none; flex-direction: column; gap: 5px;
@@ -176,6 +177,7 @@
       transition: all 0.12s;
     }
     .detected-item:hover { background: #eff6ff; border-color: #93c5fd; }
+    .detected-item.selected { background: #dbeafe; border-color: #3b82f6; }
     .detected-item .port-badge {
       background: #e0e7ff; color: #4338ca;
       font-weight: 700; font-size: 11px;
@@ -205,7 +207,6 @@
 
   <div class="content">
 
-    <!-- Conexão com o painel -->
     <div class="card">
       <div class="card-title">Conexão com o painel</div>
 
@@ -225,7 +226,6 @@
       </div>
     </div>
 
-    <!-- Impressora -->
     <div class="card">
       <div class="card-title">Impressora</div>
 
@@ -242,17 +242,16 @@
 
       <div class="field">
         <label>Como a impressora está conectada?</label>
-        <select id="printerType" onchange="onPrinterTypeChange()">
+        <select id="printerType">
           <option value="usb">Cabo USB (direto no computador)</option>
           <option value="tcp">Rede Wi-Fi ou cabo de rede (TCP/IP)</option>
         </select>
       </div>
 
-      <!-- USB -->
       <div id="usbInfo">
         <div class="info-box">
           <strong>Impressora USB:</strong> clique em <strong>"Detectar USB"</strong> para encontrar automaticamente.<br>
-          Se não detectar, tente digitar <strong>//./USB001</strong>, <strong>//./USB002</strong> ou <strong>//./USB003</strong><br>
+          Se não detectar, digite <strong>//./USB001</strong>, <strong>//./USB002</strong> ou <strong>//./USB003</strong><br>
           <span style="color:#64748b;font-size:11px">Use "Testar impressora" para confirmar qual porta funciona</span>
         </div>
 
@@ -261,7 +260,7 @@
             <label>Porta USB</label>
             <input type="text" id="printerInterface" placeholder="//./USB001" />
           </div>
-          <button class="btn-detect" id="detectBtn" onclick="detectUsb()" style="margin-bottom:0;align-self:flex-end">
+          <button type="button" class="btn-detect" id="detectBtn" style="margin-bottom:0;align-self:flex-end">
             🔍 Detectar USB
           </button>
         </div>
@@ -269,10 +268,9 @@
         <div class="detected-list" id="detectedList"></div>
       </div>
 
-      <!-- TCP -->
       <div id="tcpInfo" style="display:none">
         <div class="info-box">
-          <strong>IP da impressora:</strong> verifique na tela da impressora ou no seu roteador.<br>
+          <strong>IP da impressora:</strong> verifique na tela da impressora ou no roteador.<br>
           A porta padrão é <strong>9100</strong> — use o formato <strong>192.168.1.100:9100</strong>
         </div>
         <div class="field">
@@ -287,12 +285,11 @@
       </div>
 
       <div>
-        <button class="btn-test" id="testBtn" onclick="testPrinter()">Testar impressora</button>
+        <button type="button" class="btn-test" id="testBtn">Testar impressora</button>
         <div class="test-result" id="testResult"></div>
       </div>
     </div>
 
-    <!-- Opções -->
     <div class="card">
       <div class="card-title">Opções</div>
       <div class="toggle-row">
@@ -301,10 +298,9 @@
       </div>
     </div>
 
-    <!-- Ações -->
     <div class="actions">
-      <button class="btn-secondary" onclick="window.close()">Fechar</button>
-      <button class="btn-primary" id="saveBtn" onclick="saveConfig()">Salvar e conectar</button>
+      <button type="button" class="btn-secondary" id="closeBtn">Fechar</button>
+      <button type="button" class="btn-primary" id="saveBtn">Salvar e conectar</button>
     </div>
 
   </div>

@@ -67,11 +67,32 @@ export async function testConnection(config: PrinterConfig): Promise<boolean> {
   return printer.isPrinterConnected();
 }
 
-export function detectUsbPrinters(): DetectedPrinter[] {
-  const found: DetectedPrinter[] = [];
-  const seenPorts = new Set<string>();
+/* ───── Detecção USB no Windows ───── */
 
-  // 1. WMI: lista impressoras instaladas no Windows com porta USB
+interface RawPrinter { name: string; portName: string }
+
+function detectViaPowerShell(): RawPrinter[] {
+  try {
+    // Get-Printer é nativo no Windows 8+, mais confiável que WMIC (que está deprecado no Win11)
+    const cmd =
+      'powershell.exe -NoProfile -NonInteractive -Command ' +
+      '"Get-Printer | Where-Object { $_.PortName -match \'^USB\' } | ' +
+      'Select-Object Name,PortName | ConvertTo-Json -Compress"';
+
+    const out = execSync(cmd, { encoding: 'utf8', timeout: 8000, windowsHide: true }).trim();
+    if (!out) return [];
+
+    const parsed = JSON.parse(out);
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    return arr
+      .filter((p: any) => p && p.PortName && p.Name)
+      .map((p: any) => ({ name: String(p.Name), portName: String(p.PortName).toUpperCase() }));
+  } catch {
+    return [];
+  }
+}
+
+function detectViaWmic(): RawPrinter[] {
   try {
     const out = execSync('wmic printer get name,portname /format:csv', {
       encoding: 'utf8',
@@ -79,55 +100,84 @@ export function detectUsbPrinters(): DetectedPrinter[] {
       windowsHide: true,
     });
 
+    const found: RawPrinter[] = [];
     for (const line of out.split(/\r?\n/)) {
       const parts = line.trim().split(',');
       if (parts.length < 3) continue;
       const name = parts[1]?.trim() ?? '';
       const portName = parts[2]?.trim() ?? '';
       if (!portName || portName === 'PortName' || !/^USB\d+$/i.test(portName)) continue;
-
-      const upper = portName.toUpperCase();
-      seenPorts.add(upper);
-      found.push({
-        port: `//./${upper}`,
-        portName: upper,
-        label: `${name} — ${upper}`,
-      });
+      found.push({ name, portName: portName.toUpperCase() });
     }
+    return found;
   } catch {
-    // WMI indisponível
+    return [];
+  }
+}
+
+function probeUsbPort(portNum: number): boolean {
+  const portName = `USB${String(portNum).padStart(3, '0')}`;
+  try {
+    const fd = fs.openSync(`\\\\.\\${portName}`, 'w');
+    fs.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function detectUsbPrinters(): DetectedPrinter[] {
+  const result: DetectedPrinter[] = [];
+  const seen = new Set<string>();
+
+  // 1. PowerShell (Windows 8+)
+  for (const p of detectViaPowerShell()) {
+    if (seen.has(p.portName)) continue;
+    seen.add(p.portName);
+    result.push({
+      port: `//./${p.portName}`,
+      portName: p.portName,
+      label: `${p.name} — ${p.portName}`,
+    });
   }
 
-  // 2. Probe direto: tenta abrir USB001–USB005 como arquivo de dispositivo
+  // 2. WMIC (fallback p/ Windows mais antigo)
+  if (result.length === 0) {
+    for (const p of detectViaWmic()) {
+      if (seen.has(p.portName)) continue;
+      seen.add(p.portName);
+      result.push({
+        port: `//./${p.portName}`,
+        portName: p.portName,
+        label: `${p.name} — ${p.portName}`,
+      });
+    }
+  }
+
+  // 3. Probe direto: testa USB001-005 mesmo sem driver Windows
   for (let i = 1; i <= 5; i++) {
-    const pn = `USB${String(i).padStart(3, '0')}`;
-    if (seenPorts.has(pn)) continue;
-
-    try {
-      // \\.\ é o prefixo de device path no Windows
-      const fd = fs.openSync(`\\\\.\\${pn}`, 'w');
-      fs.closeSync(fd);
-      found.push({
-        port: `//./${pn}`,
-        portName: pn,
-        label: `${pn} — impressora detectada (sem driver Windows)`,
-      });
-      seenPorts.add(pn);
-    } catch {
-      // Porta não disponível
-    }
-  }
-
-  // 3. Se nada encontrado, sempre sugere USB001/002/003 como ponto de partida
-  if (found.length === 0) {
-    for (const pn of ['USB001', 'USB002', 'USB003']) {
-      found.push({
-        port: `//./${pn}`,
-        portName: pn,
-        label: `${pn} — tente esta porta (use "Testar" para confirmar)`,
+    const portName = `USB${String(i).padStart(3, '0')}`;
+    if (seen.has(portName)) continue;
+    if (probeUsbPort(i)) {
+      seen.add(portName);
+      result.push({
+        port: `//./${portName}`,
+        portName,
+        label: `${portName} — impressora detectada (sem driver Windows)`,
       });
     }
   }
 
-  return found;
+  // 4. Sem nada encontrado: sempre sugere USB001/002/003 como pontos de partida
+  if (result.length === 0) {
+    for (const portName of ['USB001', 'USB002', 'USB003']) {
+      result.push({
+        port: `//./${portName}`,
+        portName,
+        label: `${portName} — tente esta porta (use "Testar" para confirmar)`,
+      });
+    }
+  }
+
+  return result;
 }

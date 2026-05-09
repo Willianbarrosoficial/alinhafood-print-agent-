@@ -23,7 +23,7 @@ function updateTrayTooltip() {
   try {
     tray.setImage(nativeImage.createFromPath(getIconPath(currentStatus)));
   } catch {
-    // ícone pode não existir em dev
+    /* ícone pode não existir em dev */
   }
 }
 
@@ -42,20 +42,35 @@ function createConfigWindow() {
     return;
   }
 
+  const preloadPath = path.join(__dirname, 'preload.js');
+  console.log('[main] preload path:', preloadPath, 'exists:', require('fs').existsSync(preloadPath));
+
   configWindow = new BrowserWindow({
-    width: 520,
-    height: 680,
-    resizable: false,
+    width: 540,
+    height: 700,
+    resizable: true,
     title: 'Alinhafood Print Agent — Configurações',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
     },
   });
 
-  configWindow.loadFile(path.join(__dirname, '..', 'src', 'renderer', 'index.html'));
+  // Esconde a barra de menu padrão (File / Edit / View) no Windows
+  configWindow.setMenuBarVisibility(false);
+
+  const htmlPath = path.join(__dirname, '..', 'src', 'renderer', 'index.html');
+  console.log('[main] html path:', htmlPath, 'exists:', require('fs').existsSync(htmlPath));
+  configWindow.loadFile(htmlPath);
+
   configWindow.on('closed', () => { configWindow = null; });
+}
+
+function openDevTools() {
+  if (!configWindow) createConfigWindow();
+  configWindow?.webContents.openDevTools({ mode: 'detach' });
 }
 
 function createTray() {
@@ -66,6 +81,7 @@ function createTray() {
 
   const menu = Menu.buildFromTemplate([
     { label: 'Configurações', click: createConfigWindow },
+    { label: 'Abrir ferramentas de diagnóstico', click: openDevTools },
     { type: 'separator' },
     { label: 'Sair', click: () => app.quit() },
   ]);
@@ -84,7 +100,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // Continua na bandeja mesmo sem janelas abertas
+  /* mantém o agente vivo na bandeja */
 });
 
 app.on('before-quit', () => {
@@ -114,6 +130,7 @@ ipcMain.handle('save-config', (_event, config: {
   printerModel: 'epson' | 'star' | 'tanca' | 'daruma';
   autoStart: boolean;
 }) => {
+  console.log('[main] save-config recebido');
   store.set('apiUrl',           config.apiUrl.trim());
   store.set('agentToken',       config.agentToken.trim());
   store.set('printerType',      config.printerType);
@@ -123,8 +140,6 @@ ipcMain.handle('save-config', (_event, config: {
   store.set('autoStart',        config.autoStart);
 
   app.setLoginItemSettings({ openAtLogin: config.autoStart });
-
-  // Reinicia o poller imediatamente com a nova configuração
   restartPoller();
 
   return { ok: true };
@@ -135,9 +150,10 @@ ipcMain.handle('test-printer', async (_event, config: {
   interface?: string;
   model?: string;
 }) => {
-  const iface  = (config?.interface ?? store.get('printerInterface') ?? '').trim();
-  const type   = (config?.type      ?? store.get('printerType'))  as 'usb' | 'tcp';
-  const model  = (config?.model     ?? store.get('printerModel'))  as string;
+  console.log('[main] test-printer recebido:', config);
+  const iface = (config?.interface ?? store.get('printerInterface') ?? '').trim();
+  const type  = (config?.type      ?? store.get('printerType'))  as 'usb' | 'tcp';
+  const model = (config?.model     ?? store.get('printerModel')) as string;
 
   if (!iface) {
     return { ok: false, error: 'Nenhuma porta/IP configurado. Preencha o campo e tente novamente.' };
@@ -150,14 +166,19 @@ ipcMain.handle('test-printer', async (_event, config: {
       error: connected ? null : 'Impressora não respondeu. Verifique se está ligada e no endereço correto.',
     };
   } catch (err) {
+    console.error('[main] test-printer erro:', err);
     return { ok: false, error: err instanceof Error ? err.message : 'Erro desconhecido' };
   }
 });
 
 ipcMain.handle('detect-usb-printers', () => {
+  console.log('[main] detect-usb-printers chamado');
   try {
-    return { printers: detectUsbPrinters() };
+    const printers = detectUsbPrinters();
+    console.log('[main] detect-usb-printers resultado:', printers);
+    return { printers };
   } catch (err) {
+    console.error('[main] detect-usb-printers erro:', err);
     return { printers: [], error: err instanceof Error ? err.message : 'Erro na detecção' };
   }
 });
