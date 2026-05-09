@@ -1,5 +1,6 @@
 import { ThermalPrinter, PrinterTypes } from 'node-thermal-printer';
-import { execSync, execFileSync } from 'child_process';
+import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import net from 'net';
 import os from 'os';
@@ -55,40 +56,32 @@ function extractPortName(devicePath: string): string {
     .replace(/[/\\]+$/, '');         // remove trailing slashes
 }
 
-/* ─── USB: usa PowerShell + .NET FileStream para evitar normalização do libuv ───
- * Node.js chama GetFullPathName() internamente que adiciona \ no final do
- * device path (\\.\USB001 → \\.\USB001\), causando ENOENT.
- * PowerShell's System.IO.FileStream com FileMode.Open não faz essa normalização
- * e chama CreateFile corretamente com OPEN_EXISTING.
+/* ─── USB: grava arquivo temp e usa "copy /b" do cmd.exe ───
+ * Node.js fs adiciona \ no final de device paths (bug do libuv/GetFullPathName).
+ * PowerShell spawna processo suspeito para antivírus.
+ * cmd.exe + copy /b é a forma menos suspeita e funciona com portas de impressora.
  */
 function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 8000): Promise<void> {
   const portName = extractPortName(devicePath); // "USB001"
   console.log('[printer] rawWriteUsb port:', portName);
 
-  // Grava dados em arquivo temporário para evitar limite de tamanho do comando
-  const tmpFile = path.join(os.tmpdir(), `alf_print_${Date.now()}.prn`).replace(/\\/g, '\\\\');
-
-  fs.writeFileSync(tmpFile.replace(/\\\\/g, '\\'), data);
-
-  const ps = [
-    `$b=[System.IO.File]::ReadAllBytes('${tmpFile}')`,
-    `$s=New-Object System.IO.FileStream('\\\\.\\${portName}',[System.IO.FileMode]::Open,[System.IO.FileAccess]::Write,[System.IO.FileShare]::ReadWrite)`,
-    `try{$s.Write($b,0,$b.Length);$s.Flush()}finally{$s.Close()}`,
-    `[System.IO.File]::Delete('${tmpFile}')`,
-  ].join(';');
+  const tmpFile = path.join(os.tmpdir(), `alf_${Date.now()}.prn`);
+  fs.writeFileSync(tmpFile, data);
 
   return new Promise((resolve, reject) => {
     try {
-      execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+      // copy /b grava bytes raw na porta de impressora sem passar por GetFullPathName
+      execFileSync('cmd.exe', ['/c', 'copy', '/b', tmpFile, portName], {
         timeout: timeoutMs,
         windowsHide: true,
       });
       resolve();
     } catch (err: unknown) {
-      try { fs.unlinkSync(tmpFile.replace(/\\\\/g, '\\')); } catch { /* ignora */ }
       const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
-      const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || 'Erro desconhecido').trim();
-      reject(new Error(`Falha ao enviar para ${portName}: ${detail}`));
+      const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
+      reject(new Error(`Falha ao enviar para ${portName}: ${detail || 'porta não encontrada'}`));
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignora */ }
     }
   });
 }
