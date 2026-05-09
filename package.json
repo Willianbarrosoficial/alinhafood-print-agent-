@@ -7,9 +7,8 @@
   "scripts": {
     "build": "tsc",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder --win --x64",
-    "dist:win": "npm run build && electron-builder --win nsis --x64",
-    "dist:win:log": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "dist:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
@@ -26,7 +25,7 @@
     "appId": "com.alinhafood.printagent",
     "productName": "Alinhafood Print Agent",
     "copyright": "© 2026 Alinhafood",
-    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "artifactName": "AlinhafoodPrintAgent-Setup-${version}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -53,9 +52,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Alinhafood Print Agent",
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico"
+      "shortcutName": "Alinhafood Print Agent"
     },
     "mac": {
       "target": "dmg",
