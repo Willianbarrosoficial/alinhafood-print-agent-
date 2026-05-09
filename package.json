@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win --x64",
-    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "dist:win:log": "npm run build && electron-builder --win nsis --x64 --publish never",
     "dist:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
