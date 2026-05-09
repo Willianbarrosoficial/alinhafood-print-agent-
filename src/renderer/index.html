@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>Alinhafood Print Agent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f6f8;
+      color: #0f172a;
+      font-size: 13px;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a56db, #1e3a8a);
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-logo {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .header-title { color: #fff; font-weight: 800; font-size: 15px; }
+    .header-sub { color: rgba(255,255,255,0.65); font-size: 11px; margin-top: 1px; }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #94a3b8;
+      flex-shrink: 0;
+    }
+
+    .status-dot.polling { background: #10b981; animation: pulse 2s infinite; }
+    .status-dot.printing { background: #1a56db; animation: pulse 0.6s infinite; }
+    .status-dot.error { background: #ef4444; }
+    .status-dot.disconnected { background: #94a3b8; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .status-text { color: #475569; flex: 1; }
+
+    .content { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      padding: 16px;
+    }
+
+    .card-title {
+      font-weight: 700;
+      font-size: 12px;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      font-size: 12px;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #0f172a;
+      background: #f8fafc;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input:focus, select:focus {
+      border-color: #1a56db;
+      box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+      background: #fff;
+    }
+
+    .field { margin-bottom: 10px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-hint { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+
+    .row { display: flex; gap: 10px; align-items: flex-end; }
+    .row .field { flex: 1; margin-bottom: 0; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 2px;
+    }
+
+    .toggle {
+      appearance: none;
+      width: 40px;
+      height: 22px;
+      background: #cbd5e1;
+      border-radius: 11px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle:checked { background: #1a56db; }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      transition: transform 0.2s;
+    }
+
+    .toggle:checked::after { transform: translateX(18px); }
+
+    .toggle-label { font-size: 12px; color: #475569; }
+
+    .actions { display: flex; gap: 8px; margin-top: 4px; }
+
+    button {
+      padding: 9px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: #1a56db;
+      color: #fff;
+      flex: 1;
+    }
+
+    .btn-primary:hover { background: #1e3a8a; }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #475569;
+    }
+
+    .btn-secondary:hover { background: #e2e8f0; }
+
+    .btn-test {
+      background: #f0fdf4;
+      color: #059669;
+      border: 1px solid #d1fae5;
+      font-size: 12px;
+      padding: 7px 14px;
+    }
+
+    .btn-test:hover { background: #dcfce7; }
+
+    .test-result {
+      margin-top: 8px;
+      font-size: 12px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .test-result.ok { background: #f0fdf4; color: #059669; display: block; }
+    .test-result.fail { background: #fef2f2; color: #ef4444; display: block; }
+
+    .footer {
+      padding: 12px 20px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logo">🖨️</div>
+    <div>
+      <div class="header-title">Alinhafood Print Agent</div>
+      <div class="header-sub">Agente de impressão local</div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot disconnected" id="statusDot"></div>
+    <span class="status-text" id="statusText">Iniciando...</span>
+  </div>
+
+  <div class="content">
+
+    <!-- Conexão com o painel -->
+    <div class="card">
+      <div class="card-title">Conexão com o painel</div>
+      <div class="field">
+        <label>URL do painel Alinhafood</label>
+        <input type="text" id="apiUrl" placeholder="https://seurestaurante.alinhafood.com.br" />
+        <div class="field-hint">Endereço do site do seu restaurante</div>
+      </div>
+      <div class="field">
+        <label>Token de conexão</label>
+        <input type="password" id="agentToken" placeholder="Cole o token gerado no painel admin" />
+        <div class="field-hint">Gerado em Admin → Impressora → Agente de Impressão</div>
+      </div>
+    </div>
+
+    <!-- Impressora -->
+    <div class="card">
+      <div class="card-title">Impressora</div>
+      <div class="field">
+        <label>Tipo de conexão</label>
+        <select id="printerType" onchange="onPrinterTypeChange()">
+          <option value="usb">USB (cabo)</option>
+          <option value="tcp">Rede (TCP/IP)</option>
+        </select>
+      </div>
+      <div class="field" id="interfaceField">
+        <label id="interfaceLabel">Porta USB / Interface</label>
+        <input type="text" id="printerInterface" placeholder="Ex: //./USB001 ou 192.168.1.100" />
+        <div class="field-hint" id="interfaceHint">Para USB: //./USB001 · Para rede: IP:porta (ex: 192.168.1.100:9100)</div>
+      </div>
+      <div class="field">
+        <label>Nome amigável (opcional)</label>
+        <input type="text" id="printerName" placeholder="Ex: Impressora da cozinha" />
+      </div>
+      <div>
+        <button class="btn-test" id="testBtn" onclick="testPrinter()">Testar impressora</button>
+        <div class="test-result" id="testResult"></div>
+      </div>
+    </div>
+
+    <!-- Opções -->
+    <div class="card">
+      <div class="card-title">Opções</div>
+      <div class="toggle-row">
+        <input type="checkbox" class="toggle" id="autoStart" />
+        <span class="toggle-label">Iniciar automaticamente com o Windows</span>
+      </div>
+    </div>
+
+    <!-- Ações -->
+    <div class="actions">
+      <button class="btn-secondary" onclick="window.close()">Fechar</button>
+      <button class="btn-primary" onclick="saveConfig()">Salvar e conectar</button>
+    </div>
+
+  </div>
+
+  <div class="footer">Alinhafood Print Agent v1.0.0 — rodando na bandeja do sistema</div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

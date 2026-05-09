@@ -1,0 +1,56 @@
+{
+  "name": "alinhafood-print-agent",
+  "version": "1.0.0",
+  "description": "Agente de impressão local para o Alinhafood",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win --x64",
+    "dist:mac": "npm run build && electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "node-thermal-printer": "^4.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.alinhafood.printagent",
+    "productName": "Alinhafood Print Agent",
+    "copyright": "© 2026 Alinhafood",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/renderer/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Alinhafood Print Agent"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.utilities"
+    }
+  }
+}
