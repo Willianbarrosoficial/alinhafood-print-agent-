@@ -17,92 +17,73 @@
 
     .header {
       background: linear-gradient(135deg, #1a56db, #1e3a8a);
-      padding: 18px 20px;
+      padding: 16px 20px;
       display: flex;
       align-items: center;
       gap: 12px;
     }
 
     .header-logo {
-      width: 36px;
-      height: 36px;
+      width: 34px; height: 34px;
       background: rgba(255,255,255,0.15);
       border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
     }
 
-    .header-title { color: #fff; font-weight: 800; font-size: 15px; }
-    .header-sub { color: rgba(255,255,255,0.65); font-size: 11px; margin-top: 1px; }
+    .header-title { color: #fff; font-weight: 800; font-size: 14px; }
+    .header-sub   { color: rgba(255,255,255,0.65); font-size: 11px; margin-top: 1px; }
 
     .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 20px;
       background: #fff;
       border-bottom: 1px solid #e2e8f0;
       font-size: 12px;
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #94a3b8;
-      flex-shrink: 0;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #94a3b8; flex-shrink: 0;
     }
 
-    .status-dot.polling { background: #10b981; animation: pulse 2s infinite; }
-    .status-dot.printing { background: #1a56db; animation: pulse 0.6s infinite; }
-    .status-dot.error { background: #ef4444; }
+    .status-dot.polling      { background: #10b981; animation: pulse 2s infinite; }
+    .status-dot.printing     { background: #1a56db; animation: pulse 0.6s infinite; }
+    .status-dot.error        { background: #ef4444; }
     .status-dot.disconnected { background: #94a3b8; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+      50%       { opacity: 0.4; }
     }
 
     .status-text { color: #475569; flex: 1; }
 
-    .content { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .content { padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; }
 
     .card {
       background: #fff;
       border-radius: 14px;
       border: 1px solid #e2e8f0;
-      padding: 16px;
+      padding: 14px 16px;
     }
 
     .card-title {
-      font-weight: 700;
-      font-size: 12px;
-      color: #475569;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 12px;
+      font-weight: 700; font-size: 11px; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin-bottom: 10px;
     }
 
     label {
-      display: block;
-      font-weight: 600;
-      font-size: 12px;
-      color: #0f172a;
-      margin-bottom: 4px;
+      display: block; font-weight: 600; font-size: 12px;
+      color: #0f172a; margin-bottom: 4px;
     }
 
     input[type="text"], input[type="password"], select {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      font-size: 13px;
-      color: #0f172a;
-      background: #f8fafc;
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%; padding: 8px 11px;
+      border: 1px solid #e2e8f0; border-radius: 10px;
+      font-size: 13px; color: #0f172a; background: #f8fafc;
+      outline: none; transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     input:focus, select:focus {
@@ -111,105 +92,99 @@
       background: #fff;
     }
 
-    .field { margin-bottom: 10px; }
+    .field { margin-bottom: 9px; }
     .field:last-child { margin-bottom: 0; }
-    .field-hint { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+    .field-hint { font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.5; }
+    .field-hint strong { color: #64748b; }
 
-    .row { display: flex; gap: 10px; align-items: flex-end; }
+    .info-box {
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: 10px; padding: 9px 12px;
+      font-size: 11.5px; color: #1e40af; line-height: 1.6;
+      margin-bottom: 8px;
+    }
+
+    .row { display: flex; gap: 8px; align-items: flex-end; }
     .row .field { flex: 1; margin-bottom: 0; }
 
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 2px;
-    }
+    .toggle-row { display: flex; align-items: center; gap: 10px; }
 
     .toggle {
-      appearance: none;
-      width: 40px;
-      height: 22px;
-      background: #cbd5e1;
-      border-radius: 11px;
-      position: relative;
-      cursor: pointer;
-      transition: background 0.2s;
-      flex-shrink: 0;
+      appearance: none; width: 38px; height: 21px;
+      background: #cbd5e1; border-radius: 11px;
+      position: relative; cursor: pointer;
+      transition: background 0.2s; flex-shrink: 0;
     }
-
     .toggle:checked { background: #1a56db; }
-
     .toggle::after {
-      content: '';
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      width: 16px;
-      height: 16px;
-      background: #fff;
-      border-radius: 50%;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-      transition: transform 0.2s;
+      content: ''; position: absolute; top: 2.5px; left: 2.5px;
+      width: 16px; height: 16px; background: #fff; border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s;
     }
-
-    .toggle:checked::after { transform: translateX(18px); }
-
+    .toggle:checked::after { transform: translateX(17px); }
     .toggle-label { font-size: 12px; color: #475569; }
 
-    .actions { display: flex; gap: 8px; margin-top: 4px; }
+    .actions { display: flex; gap: 8px; margin-top: 2px; }
 
     button {
-      padding: 9px 16px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      border: none;
-      transition: all 0.15s;
+      padding: 8px 14px; border-radius: 10px;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      border: none; transition: all 0.15s;
     }
 
-    .btn-primary {
-      background: #1a56db;
-      color: #fff;
-      flex: 1;
-    }
-
-    .btn-primary:hover { background: #1e3a8a; }
+    .btn-primary { background: #1a56db; color: #fff; flex: 1; }
+    .btn-primary:hover  { background: #1e3a8a; }
     .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.6; cursor: default; }
 
-    .btn-secondary {
-      background: #f1f5f9;
-      color: #475569;
-    }
-
+    .btn-secondary { background: #f1f5f9; color: #475569; }
     .btn-secondary:hover { background: #e2e8f0; }
 
     .btn-test {
-      background: #f0fdf4;
-      color: #059669;
-      border: 1px solid #d1fae5;
-      font-size: 12px;
-      padding: 7px 14px;
+      background: #f0fdf4; color: #059669;
+      border: 1px solid #d1fae5; font-size: 12px; padding: 7px 12px;
+      white-space: nowrap;
     }
-
     .btn-test:hover { background: #dcfce7; }
+    .btn-test:disabled { opacity: 0.6; cursor: default; }
+
+    .btn-detect {
+      background: #f8fafc; color: #475569;
+      border: 1px solid #e2e8f0; font-size: 12px; padding: 7px 12px;
+      white-space: nowrap;
+    }
+    .btn-detect:hover { background: #f1f5f9; }
+    .btn-detect:disabled { opacity: 0.6; cursor: default; }
 
     .test-result {
-      margin-top: 8px;
-      font-size: 12px;
-      padding: 7px 10px;
-      border-radius: 8px;
-      display: none;
+      margin-top: 8px; font-size: 12px; padding: 7px 10px;
+      border-radius: 8px; display: none;
     }
-
-    .test-result.ok { background: #f0fdf4; color: #059669; display: block; }
+    .test-result.ok   { background: #f0fdf4; color: #059669; display: block; }
     .test-result.fail { background: #fef2f2; color: #ef4444; display: block; }
 
+    .detected-list {
+      margin-top: 8px; display: none; flex-direction: column; gap: 5px;
+    }
+    .detected-list.visible { display: flex; }
+
+    .detected-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 8px;
+      cursor: pointer; font-size: 12px; color: #0f172a;
+      transition: all 0.12s;
+    }
+    .detected-item:hover { background: #eff6ff; border-color: #93c5fd; }
+    .detected-item .port-badge {
+      background: #e0e7ff; color: #4338ca;
+      font-weight: 700; font-size: 11px;
+      padding: 2px 7px; border-radius: 6px; flex-shrink: 0;
+    }
+
     .footer {
-      padding: 12px 20px;
-      text-align: center;
-      font-size: 11px;
-      color: #94a3b8;
+      padding: 10px 20px; text-align: center;
+      font-size: 11px; color: #94a3b8;
     }
   </style>
 </head>
@@ -233,11 +208,16 @@
     <!-- Conexão com o painel -->
     <div class="card">
       <div class="card-title">Conexão com o painel</div>
+
       <div class="field">
         <label>URL do painel Alinhafood</label>
-        <input type="text" id="apiUrl" placeholder="Cole aqui a URL do seu painel" />
-        <div class="field-hint">Ex: <strong>https://meurestaurante.com.br</strong> — é o endereço que você acessa no navegador para abrir o painel admin</div>
+        <input type="text" id="apiUrl" placeholder="https://meurestaurante.com.br" />
+        <div class="field-hint">
+          Cole aqui o endereço <strong>base</strong> do seu painel — sem <strong>/admin</strong> no final.<br>
+          Exemplo: se você acessa <strong>https://alinhafood.com.br/admin</strong>, coloque só <strong>https://alinhafood.com.br</strong>
+        </div>
       </div>
+
       <div class="field">
         <label>Token de conexão</label>
         <input type="password" id="agentToken" placeholder="Cole o token gerado no painel admin" />
@@ -248,6 +228,18 @@
     <!-- Impressora -->
     <div class="card">
       <div class="card-title">Impressora</div>
+
+      <div class="field">
+        <label>Modelo / protocolo da impressora</label>
+        <select id="printerModel">
+          <option value="epson">Epson / Genérica ESC/POS (mais comum)</option>
+          <option value="tanca">Tanca</option>
+          <option value="daruma">Daruma</option>
+          <option value="star">Star Micronics</option>
+        </select>
+        <div class="field-hint">Em dúvida, deixe "Epson / Genérica" — funciona com 90% das impressoras de cupom</div>
+      </div>
+
       <div class="field">
         <label>Como a impressora está conectada?</label>
         <select id="printerType" onchange="onPrinterTypeChange()">
@@ -257,25 +249,33 @@
       </div>
 
       <!-- USB -->
-      <div id="usbInfo" class="field">
-        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e40af;line-height:1.6">
-          <strong>Porta USB:</strong> tente primeiro com <strong>//./USB001</strong><br>
-          Se não funcionar, tente <strong>//./USB002</strong> ou <strong>//./USB003</strong><br>
-          <span style="color:#64748b">Dica: use o botão "Testar impressora" para descobrir qual funciona</span>
+      <div id="usbInfo">
+        <div class="info-box">
+          <strong>Impressora USB:</strong> clique em <strong>"Detectar USB"</strong> para encontrar automaticamente.<br>
+          Se não detectar, tente digitar <strong>//./USB001</strong>, <strong>//./USB002</strong> ou <strong>//./USB003</strong><br>
+          <span style="color:#64748b;font-size:11px">Use "Testar impressora" para confirmar qual porta funciona</span>
         </div>
-        <div class="field" style="margin-top:8px;margin-bottom:0">
-          <label id="interfaceLabel">Porta USB</label>
-          <input type="text" id="printerInterface" placeholder="//./USB001" />
+
+        <div class="row field" style="margin-bottom:8px">
+          <div class="field">
+            <label>Porta USB</label>
+            <input type="text" id="printerInterface" placeholder="//./USB001" />
+          </div>
+          <button class="btn-detect" id="detectBtn" onclick="detectUsb()" style="margin-bottom:0;align-self:flex-end">
+            🔍 Detectar USB
+          </button>
         </div>
+
+        <div class="detected-list" id="detectedList"></div>
       </div>
 
       <!-- TCP -->
-      <div id="tcpInfo" class="field" style="display:none">
-        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e40af;line-height:1.6">
-          <strong>IP da impressora:</strong> verifique na tela da própria impressora ou no roteador<br>
-          A porta padrão é <strong>9100</strong> — use no formato <strong>192.168.1.100:9100</strong>
+      <div id="tcpInfo" style="display:none">
+        <div class="info-box">
+          <strong>IP da impressora:</strong> verifique na tela da impressora ou no seu roteador.<br>
+          A porta padrão é <strong>9100</strong> — use o formato <strong>192.168.1.100:9100</strong>
         </div>
-        <div class="field" style="margin-top:8px;margin-bottom:0">
+        <div class="field">
           <label>IP e porta da impressora</label>
           <input type="text" id="printerInterfaceTcp" placeholder="192.168.1.100:9100" />
         </div>
@@ -285,6 +285,7 @@
         <label>Nome da impressora (opcional)</label>
         <input type="text" id="printerName" placeholder="Ex: Impressora da cozinha" />
       </div>
+
       <div>
         <button class="btn-test" id="testBtn" onclick="testPrinter()">Testar impressora</button>
         <div class="test-result" id="testResult"></div>
@@ -303,12 +304,12 @@
     <!-- Ações -->
     <div class="actions">
       <button class="btn-secondary" onclick="window.close()">Fechar</button>
-      <button class="btn-primary" onclick="saveConfig()">Salvar e conectar</button>
+      <button class="btn-primary" id="saveBtn" onclick="saveConfig()">Salvar e conectar</button>
     </div>
 
   </div>
 
-  <div class="footer">Alinhafood Print Agent v1.0.0 — rodando na bandeja do sistema</div>
+  <div class="footer">Alinhafood Print Agent v1.0.0</div>
 
   <script src="renderer.js"></script>
 </body>

@@ -21,7 +21,6 @@ interface PrintJob {
 }
 
 export type PollerStatus = 'idle' | 'polling' | 'printing' | 'error' | 'disconnected';
-
 type StatusCallback = (status: PollerStatus, message: string) => void;
 
 let pollerTimer: ReturnType<typeof setInterval> | null = null;
@@ -34,7 +33,6 @@ function emit(status: PollerStatus, message: string) {
 async function fetchJobs(): Promise<PrintJob[]> {
   const apiUrl = store.get('apiUrl');
   const token = store.get('agentToken');
-
   if (!apiUrl || !token) return [];
 
   const res = await fetch(`${apiUrl}/api/print/jobs`, {
@@ -58,10 +56,7 @@ async function markJob(jobId: string, status: 'completed' | 'failed', errorMessa
 
   await fetch(`${apiUrl}/api/print/jobs/${jobId}`, {
     method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, error_message: errorMessage }),
   });
 }
@@ -69,6 +64,7 @@ async function markJob(jobId: string, status: 'completed' | 'failed', errorMessa
 async function processJob(job: PrintJob): Promise<void> {
   const printerType = store.get('printerType');
   const printerInterface = store.get('printerInterface');
+  const printerModel = store.get('printerModel');
 
   if (!printerInterface) {
     await markJob(job.id, 'failed', 'Impressora não configurada no agente');
@@ -79,16 +75,16 @@ async function processJob(job: PrintJob): Promise<void> {
   emit('printing', `Imprimindo pedido #${job.order_id.slice(0, 8).toUpperCase()}...`);
 
   try {
-    await printReceipt(job.payload.receipt_text, {
-      type: printerType,
-      interface: printerInterface,
-    }, Math.min(job.copies, 5));
+    await printReceipt(
+      job.payload.receipt_text,
+      { type: printerType, interface: printerInterface, model: printerModel },
+      Math.min(job.copies, 5)
+    );
 
     await markJob(job.id, 'completed');
     emit('polling', `Pedido #${job.order_id.slice(0, 8).toUpperCase()} impresso com sucesso`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
-
     if (job.attempts + 1 >= MAX_ATTEMPTS) {
       await markJob(job.id, 'failed', message);
       emit('error', `Falha ao imprimir após ${MAX_ATTEMPTS} tentativas: ${message}`);
@@ -103,17 +99,16 @@ async function poll(): Promise<void> {
   const token = store.get('agentToken');
 
   if (!apiUrl || !token) {
-    emit('disconnected', 'Configure a URL e o token para começar');
+    emit('disconnected', 'Configure a URL do painel e o token para começar');
     return;
   }
 
   try {
     const jobs = await fetchJobs();
     if (jobs.length === 0) {
-      emit('polling', 'Aguardando pedidos...');
+      emit('polling', 'Conectado — aguardando pedidos...');
       return;
     }
-
     for (const job of jobs) {
       await processJob(job);
     }
@@ -129,7 +124,16 @@ export function startPoller(callback: StatusCallback): void {
 
   void poll();
   pollerTimer = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
-  emit('polling', 'Agente iniciado — aguardando pedidos...');
+}
+
+export function restartPoller(callback?: StatusCallback): void {
+  if (pollerTimer) {
+    clearInterval(pollerTimer);
+    pollerTimer = null;
+  }
+  if (callback) onStatusChange = callback;
+  void poll();
+  pollerTimer = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
 }
 
 export function stopPoller(): void {

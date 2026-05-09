@@ -6,6 +6,7 @@ interface StoreSchema {
   printerType: 'usb' | 'tcp';
   printerInterface: string;
   printerName: string;
+  printerModel: 'epson' | 'star' | 'tanca' | 'daruma';
   autoStart: boolean;
 }
 
@@ -17,6 +18,7 @@ export const store = new Store<StoreSchema>({
     printerType: 'usb',
     printerInterface: '',
     printerName: '',
+    printerModel: 'epson',
     autoStart: true,
   },
 });
