@@ -1,7 +1,9 @@
 import { ThermalPrinter, PrinterTypes } from 'node-thermal-printer';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import net from 'net';
+import os from 'os';
+import path from 'path';
 
 export interface PrinterConfig {
   type: 'usb' | 'tcp';
@@ -46,46 +48,48 @@ function buildReceiptBytes(text: string): Buffer {
   ]);
 }
 
-/* ─── converte //./USB001 → \\.\USB001 (formato nativo Windows) ─── */
-function toWindowsDevicePath(p: string): string {
-  // Node.js normaliza //./USB001 adicionando \ no final, quebrando o device path.
-  // Usamos o formato nativo com barras invertidas para evitar normalização.
-  if (p.startsWith('//./') || p.startsWith('//.\\')) {
-    return '\\\\.\\' + p.slice(4).replace(/\//g, '\\').replace(/\\+$/, '');
-  }
-  return p.replace(/\/+$/, '').replace(/\\+$/, ''); // remove trailing slashes
+/* ─── extrai nome da porta de //./USB001 ou \\.\USB001 → "USB001" ─── */
+function extractPortName(devicePath: string): string {
+  return devicePath
+    .replace(/^[/\\]+\.[/\\]+/, '') // remove //. ou \\.
+    .replace(/[/\\]+$/, '');         // remove trailing slashes
 }
 
-/* ─── USB: escreve raw via fs.open com O_WRONLY ─── */
-// fs.createWriteStream usa flag 'w' que inclui O_CREAT, fazendo o libuv
-// tratar o caminho como arquivo comum e adicionar separador no device path.
-// fs.open com O_WRONLY mapeia para OPEN_EXISTING no Windows (sem O_CREAT),
-// que é o modo correto para abrir device paths como \\.\USB001.
-function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 6000): Promise<void> {
-  const winPath = toWindowsDevicePath(devicePath);
-  console.log('[printer] rawWriteUsb path:', JSON.stringify(winPath));
+/* ─── USB: usa PowerShell + .NET FileStream para evitar normalização do libuv ───
+ * Node.js chama GetFullPathName() internamente que adiciona \ no final do
+ * device path (\\.\USB001 → \\.\USB001\), causando ENOENT.
+ * PowerShell's System.IO.FileStream com FileMode.Open não faz essa normalização
+ * e chama CreateFile corretamente com OPEN_EXISTING.
+ */
+function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 8000): Promise<void> {
+  const portName = extractPortName(devicePath); // "USB001"
+  console.log('[printer] rawWriteUsb port:', portName);
+
+  // Grava dados em arquivo temporário para evitar limite de tamanho do comando
+  const tmpFile = path.join(os.tmpdir(), `alf_print_${Date.now()}.prn`).replace(/\\/g, '\\\\');
+
+  fs.writeFileSync(tmpFile.replace(/\\\\/g, '\\'), data);
+
+  const ps = [
+    `$b=[System.IO.File]::ReadAllBytes('${tmpFile}')`,
+    `$s=New-Object System.IO.FileStream('\\\\.\\${portName}',[System.IO.FileMode]::Open,[System.IO.FileAccess]::Write,[System.IO.FileShare]::ReadWrite)`,
+    `try{$s.Write($b,0,$b.Length);$s.Flush()}finally{$s.Close()}`,
+    `[System.IO.File]::Delete('${tmpFile}')`,
+  ].join(';');
 
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('Timeout: impressora não respondeu em ' + timeoutMs / 1000 + 's')),
-      timeoutMs
-    );
-
-    // O_WRONLY sem O_CREAT = OPEN_EXISTING no Windows
-    fs.open(winPath, fs.constants.O_WRONLY, (openErr, fd) => {
-      if (openErr) {
-        clearTimeout(timer);
-        reject(openErr);
-        return;
-      }
-
-      fs.write(fd, data, 0, data.length, null, (writeErr) => {
-        fs.close(fd, () => { /* ignora erro de close */ });
-        clearTimeout(timer);
-        if (writeErr) reject(writeErr);
-        else resolve();
+    try {
+      execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+        timeout: timeoutMs,
+        windowsHide: true,
       });
-    });
+      resolve();
+    } catch (err: unknown) {
+      try { fs.unlinkSync(tmpFile.replace(/\\\\/g, '\\')); } catch { /* ignora */ }
+      const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
+      const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || 'Erro desconhecido').trim();
+      reject(new Error(`Falha ao enviar para ${portName}: ${detail}`));
+    }
   });
 }
 
@@ -129,20 +133,18 @@ export async function printTestPage(config: PrinterConfig): Promise<void> {
 }
 
 export async function printReceipt(text: string, config: PrinterConfig, copies = 1): Promise<void> {
-  // Tenta node-thermal-printer (formatação completa ESC/POS)
-  try {
-    await printViaThermal(text, config, copies);
-    return;
-  } catch (thermalErr) {
-    console.warn('[printer] node-thermal-printer falhou, tentando raw:', thermalErr);
-  }
-
-  // Fallback: raw ESC/POS
   const data = buildReceiptBytes(text);
+
   for (let i = 0; i < copies; i++) {
     if (config.type === 'tcp') {
-      await rawWriteTcp(config.interface, data);
+      // TCP: tenta node-thermal-printer (melhor formatação), fallback raw
+      try {
+        await printViaThermal(text, config, 1);
+      } catch {
+        await rawWriteTcp(config.interface, data);
+      }
     } else {
+      // USB: sempre usa PowerShell raw (Node.js fs não suporta device paths)
       await rawWriteUsb(config.interface, data);
     }
     if (i < copies - 1) await new Promise(r => setTimeout(r, 600));
@@ -159,10 +161,12 @@ function getPrinterType(model?: string): PrinterTypes {
 }
 
 async function printViaThermal(text: string, config: PrinterConfig, copies: number): Promise<void> {
-  const iface = config.type === 'usb' ? toWindowsDevicePath(config.interface) : config.interface;
+  // Para USB, node-thermal-printer sofre do mesmo problema do libuv com device paths.
+  // Só usa para TCP onde não há esse problema.
+  if (config.type === 'usb') throw new Error('USB usa raw path — usar rawWriteUsb');
   const printer = new ThermalPrinter({
     type: getPrinterType(config.model),
-    interface: iface,
+    interface: config.interface,
     removeSpecialCharacters: false,
     lineCharacter: '-',
     options: { timeout: 5000 },
