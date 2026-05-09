@@ -1,5 +1,5 @@
 import { ThermalPrinter, PrinterTypes } from 'node-thermal-printer';
-import { execFileSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import fs from 'fs';
 import net from 'net';
 import os from 'os';
