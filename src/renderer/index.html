@@ -235,13 +235,13 @@
       <div class="card-title">Conexão com o painel</div>
       <div class="field">
         <label>URL do painel Alinhafood</label>
-        <input type="text" id="apiUrl" placeholder="https://seurestaurante.alinhafood.com.br" />
-        <div class="field-hint">Endereço do site do seu restaurante</div>
+        <input type="text" id="apiUrl" placeholder="Cole aqui a URL do seu painel" />
+        <div class="field-hint">Ex: <strong>https://meurestaurante.com.br</strong> — é o endereço que você acessa no navegador para abrir o painel admin</div>
       </div>
       <div class="field">
         <label>Token de conexão</label>
         <input type="password" id="agentToken" placeholder="Cole o token gerado no painel admin" />
-        <div class="field-hint">Gerado em Admin → Impressora → Agente de Impressão</div>
+        <div class="field-hint">Gerado em Admin → Impressora → Agente de Impressão → "Gerar token"</div>
       </div>
     </div>
 
@@ -249,19 +249,40 @@
     <div class="card">
       <div class="card-title">Impressora</div>
       <div class="field">
-        <label>Tipo de conexão</label>
+        <label>Como a impressora está conectada?</label>
         <select id="printerType" onchange="onPrinterTypeChange()">
-          <option value="usb">USB (cabo)</option>
-          <option value="tcp">Rede (TCP/IP)</option>
+          <option value="usb">Cabo USB (direto no computador)</option>
+          <option value="tcp">Rede Wi-Fi ou cabo de rede (TCP/IP)</option>
         </select>
       </div>
-      <div class="field" id="interfaceField">
-        <label id="interfaceLabel">Porta USB / Interface</label>
-        <input type="text" id="printerInterface" placeholder="Ex: //./USB001 ou 192.168.1.100" />
-        <div class="field-hint" id="interfaceHint">Para USB: //./USB001 · Para rede: IP:porta (ex: 192.168.1.100:9100)</div>
+
+      <!-- USB -->
+      <div id="usbInfo" class="field">
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e40af;line-height:1.6">
+          <strong>Porta USB:</strong> tente primeiro com <strong>//./USB001</strong><br>
+          Se não funcionar, tente <strong>//./USB002</strong> ou <strong>//./USB003</strong><br>
+          <span style="color:#64748b">Dica: use o botão "Testar impressora" para descobrir qual funciona</span>
+        </div>
+        <div class="field" style="margin-top:8px;margin-bottom:0">
+          <label id="interfaceLabel">Porta USB</label>
+          <input type="text" id="printerInterface" placeholder="//./USB001" />
+        </div>
       </div>
+
+      <!-- TCP -->
+      <div id="tcpInfo" class="field" style="display:none">
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e40af;line-height:1.6">
+          <strong>IP da impressora:</strong> verifique na tela da própria impressora ou no roteador<br>
+          A porta padrão é <strong>9100</strong> — use no formato <strong>192.168.1.100:9100</strong>
+        </div>
+        <div class="field" style="margin-top:8px;margin-bottom:0">
+          <label>IP e porta da impressora</label>
+          <input type="text" id="printerInterfaceTcp" placeholder="192.168.1.100:9100" />
+        </div>
+      </div>
+
       <div class="field">
-        <label>Nome amigável (opcional)</label>
+        <label>Nome da impressora (opcional)</label>
         <input type="text" id="printerName" placeholder="Ex: Impressora da cozinha" />
       </div>
       <div>

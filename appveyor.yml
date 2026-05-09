@@ -1,0 +1,16 @@
+image: Windows Server 2022
+
+platform: x64
+
+install:
+  - node --version
+  - npm --version
+  - npm install
+
+build_script:
+  - npm run build
+  - npx electron-builder --win --x64
+
+artifacts:
+  - path: release\*.exe
+    name: AlinhafoodPrintAgent-Setup

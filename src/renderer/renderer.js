@@ -10,19 +10,24 @@ function setStatus(status, message) {
 
 function onPrinterTypeChange() {
   const type = document.getElementById('printerType').value;
-  const label = document.getElementById('interfaceLabel');
-  const input = document.getElementById('printerInterface');
-  const hint = document.getElementById('interfaceHint');
+  const usbInfo = document.getElementById('usbInfo');
+  const tcpInfo = document.getElementById('tcpInfo');
 
   if (type === 'tcp') {
-    label.textContent = 'IP e porta da impressora';
-    input.placeholder = 'Ex: 192.168.1.100:9100';
-    hint.textContent = 'IP da impressora na rede local seguido da porta (geralmente 9100)';
+    usbInfo.style.display = 'none';
+    tcpInfo.style.display = 'block';
   } else {
-    label.textContent = 'Interface USB';
-    input.placeholder = 'Ex: //./USB001';
-    hint.textContent = 'No Windows use //./USB001, //./USB002, etc. Verifique no Gerenciador de Dispositivos';
+    usbInfo.style.display = 'block';
+    tcpInfo.style.display = 'none';
   }
+}
+
+function getActiveInterface() {
+  const type = document.getElementById('printerType').value;
+  if (type === 'tcp') {
+    return document.getElementById('printerInterfaceTcp').value.trim();
+  }
+  return document.getElementById('printerInterface').value.trim();
 }
 
 async function loadConfig() {
@@ -31,7 +36,11 @@ async function loadConfig() {
     document.getElementById('apiUrl').value = config.apiUrl || '';
     document.getElementById('agentToken').value = config.agentToken || '';
     document.getElementById('printerType').value = config.printerType || 'usb';
-    document.getElementById('printerInterface').value = config.printerInterface || '';
+    if (config.printerType === 'tcp') {
+      document.getElementById('printerInterfaceTcp').value = config.printerInterface || '';
+    } else {
+      document.getElementById('printerInterface').value = config.printerInterface || '';
+    }
     document.getElementById('printerName').value = config.printerName || '';
     document.getElementById('autoStart').checked = config.autoStart !== false;
 
@@ -50,7 +59,7 @@ async function saveConfig() {
     apiUrl: document.getElementById('apiUrl').value.trim().replace(/\/$/, ''),
     agentToken: document.getElementById('agentToken').value.trim(),
     printerType: document.getElementById('printerType').value,
-    printerInterface: document.getElementById('printerInterface').value.trim(),
+    printerInterface: getActiveInterface(),
     printerName: document.getElementById('printerName').value.trim(),
     autoStart: document.getElementById('autoStart').checked,
   };
