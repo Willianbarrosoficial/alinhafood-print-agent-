@@ -10,7 +10,7 @@
     "dist:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
-    "electron-store": "^10.0.0",
+    "electron-store": "^8.1.0",
     "node-thermal-printer": "^4.3.4"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
+import { ThermalPrinter, PrinterTypes } from 'node-thermal-printer';
 
 export interface PrinterConfig {
   type: 'usb' | 'tcp';
@@ -9,7 +9,6 @@ export async function printReceipt(text: string, config: PrinterConfig, copies =
   const printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
     interface: config.interface,
-    characterSet: CharacterSet.BRASIL,
     removeSpecialCharacters: false,
     lineCharacter: '-',
     options: {
