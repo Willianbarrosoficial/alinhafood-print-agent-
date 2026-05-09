@@ -33,6 +33,22 @@ O instalador é gerado em `release/Alinhafood Print Agent Setup 1.0.0.exe`.
 Copie o `.exe` para `Alinhafood 01/public/downloads/AlinhafoodPrintAgent-Setup.exe`
 para disponibilizá-lo no link de download do painel admin.
 
+## Assinatura digital do Windows
+
+Para distribuição em clientes, gere o instalador com um certificado de code signing.
+Sem assinatura, o Windows Defender/SmartScreen pode bloquear o app por reputação baixa,
+principalmente por ser um app Electron que acessa a fila de impressão local.
+
+Configure estas variáveis no ambiente de build antes de rodar `npm run dist:win`:
+
+```bash
+WIN_CSC_LINK=/caminho/para/certificado.pfx
+WIN_CSC_KEY_PASSWORD=senha_do_certificado
+```
+
+No CI, salve essas variáveis como secrets. O `electron-builder` assina o `.exe`
+automaticamente quando encontra o certificado configurado.
+
 ## Configuração após instalar
 
 1. Abra o programa — aparece na bandeja do sistema (canto inferior direito)

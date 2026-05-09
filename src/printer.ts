@@ -193,22 +193,6 @@ async function printViaThermal(text: string, config: PrinterConfig, copies: numb
 
 interface RawPrinter { name: string; portName: string }
 
-function detectViaPowerShell(): RawPrinter[] {
-  try {
-    const cmd =
-      'powershell.exe -NoProfile -NonInteractive -Command ' +
-      '"Get-Printer | Where-Object { $_.PortName -match \'^USB\' } | ' +
-      'Select-Object Name,PortName | ConvertTo-Json -Compress"';
-    const out = execSync(cmd, { encoding: 'utf8', timeout: 8000, windowsHide: true }).trim();
-    if (!out) return [];
-    const parsed = JSON.parse(out);
-    const arr = Array.isArray(parsed) ? parsed : [parsed];
-    return arr
-      .filter((p: Record<string, unknown>) => p && p.PortName && p.Name)
-      .map((p: Record<string, unknown>) => ({ name: String(p.Name), portName: String(p.PortName).toUpperCase() }));
-  } catch { return []; }
-}
-
 function detectViaWmic(): RawPrinter[] {
   try {
     const out = execSync('wmic printer get name,portname /format:csv', {
@@ -240,7 +224,7 @@ export function detectUsbPrinters(): DetectedPrinter[] {
   const result: DetectedPrinter[] = [];
   const seen = new Set<string>();
 
-  for (const p of [...detectViaPowerShell(), ...detectViaWmic()]) {
+  for (const p of detectViaWmic()) {
     if (seen.has(p.portName)) continue;
     seen.add(p.portName);
     result.push({ port: `//./${p.portName}`, portName: p.portName, label: `${p.name} — ${p.portName}` });
