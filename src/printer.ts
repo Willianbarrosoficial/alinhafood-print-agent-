@@ -1,6 +1,7 @@
 import { ThermalPrinter, PrinterTypes } from 'node-thermal-printer';
 import { execSync } from 'child_process';
 import fs from 'fs';
+import net from 'net';
 
 export interface PrinterConfig {
   type: 'usb' | 'tcp';
@@ -14,6 +15,126 @@ export interface DetectedPrinter {
   label: string;
 }
 
+/* ─── ESC/POS raw bytes ─── */
+const ESC = 0x1B;
+const GS  = 0x1D;
+
+function buildTestPageBytes(): Buffer {
+  const now = new Date().toLocaleString('pt-BR');
+  return Buffer.concat([
+    Buffer.from([ESC, 0x40]),             // ESC @ — reset/inicializa
+    Buffer.from([ESC, 0x61, 0x01]),       // centralizar
+    Buffer.from([ESC, 0x21, 0x10]),       // fonte dupla altura
+    Buffer.from('ALINHAFOOD\n', 'latin1'),
+    Buffer.from([ESC, 0x21, 0x00]),       // fonte normal
+    Buffer.from('Print Agent - Teste\n', 'latin1'),
+    Buffer.from('------------------------\n', 'latin1'),
+    Buffer.from([ESC, 0x61, 0x00]),       // alinhar esquerda
+    Buffer.from(`Data: ${now}\n`, 'latin1'),
+    Buffer.from('Impressora funcionando!\n', 'latin1'),
+    Buffer.from('------------------------\n', 'latin1'),
+    Buffer.from([0x0A, 0x0A, 0x0A]),      // 3 linhas em branco
+    Buffer.from([GS, 0x56, 0x00]),        // GS V 0 — corte total
+  ]);
+}
+
+function buildReceiptBytes(text: string): Buffer {
+  return Buffer.concat([
+    Buffer.from([ESC, 0x40]),             // reset
+    Buffer.from(text + '\n\n\n', 'latin1'),
+    Buffer.from([GS, 0x56, 0x00]),        // corte
+  ]);
+}
+
+/* ─── USB: escreve raw via fs ─── */
+function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 6000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timeout: impressora não respondeu em ' + timeoutMs / 1000 + 's')), timeoutMs);
+
+    const stream = fs.createWriteStream(devicePath);
+
+    stream.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    stream.on('open', () => {
+      stream.write(data, (err) => {
+        if (err) {
+          clearTimeout(timer);
+          stream.destroy();
+          reject(err);
+          return;
+        }
+        stream.end(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    });
+  });
+}
+
+/* ─── TCP: escreve raw via net.Socket ─── */
+function rawWriteTcp(hostport: string, data: Buffer, timeoutMs = 6000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const [host, portStr] = hostport.split(':');
+    const port = parseInt(portStr ?? '9100', 10);
+
+    const socket = new net.Socket();
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error('Timeout ao conectar em ' + hostport));
+    }, timeoutMs);
+
+    socket.connect(port, host, () => {
+      socket.write(data, (err) => {
+        clearTimeout(timer);
+        socket.destroy();
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+/* ─── API pública ─── */
+
+export async function printTestPage(config: PrinterConfig): Promise<void> {
+  const data = buildTestPageBytes();
+  if (config.type === 'tcp') {
+    await rawWriteTcp(config.interface, data);
+  } else {
+    await rawWriteUsb(config.interface, data);
+  }
+}
+
+export async function printReceipt(text: string, config: PrinterConfig, copies = 1): Promise<void> {
+  // Tenta node-thermal-printer (formatação completa ESC/POS)
+  try {
+    await printViaThermal(text, config, copies);
+    return;
+  } catch (thermalErr) {
+    console.warn('[printer] node-thermal-printer falhou, tentando raw:', thermalErr);
+  }
+
+  // Fallback: raw ESC/POS
+  const data = buildReceiptBytes(text);
+  for (let i = 0; i < copies; i++) {
+    if (config.type === 'tcp') {
+      await rawWriteTcp(config.interface, data);
+    } else {
+      await rawWriteUsb(config.interface, data);
+    }
+    if (i < copies - 1) await new Promise(r => setTimeout(r, 600));
+  }
+}
+
 function getPrinterType(model?: string): PrinterTypes {
   switch (model) {
     case 'star':   return PrinterTypes.STAR;
@@ -23,26 +144,17 @@ function getPrinterType(model?: string): PrinterTypes {
   }
 }
 
-function buildPrinter(config: PrinterConfig): ThermalPrinter {
-  return new ThermalPrinter({
+async function printViaThermal(text: string, config: PrinterConfig, copies: number): Promise<void> {
+  const printer = new ThermalPrinter({
     type: getPrinterType(config.model),
     interface: config.interface,
     removeSpecialCharacters: false,
     lineCharacter: '-',
     options: { timeout: 5000 },
   });
-}
-
-export async function printReceipt(text: string, config: PrinterConfig, copies = 1): Promise<void> {
-  const printer = buildPrinter(config);
 
   const isConnected = await printer.isPrinterConnected();
-  if (!isConnected) {
-    throw new Error(
-      'Impressora não encontrada. Verifique se está ligada e conectada, ' +
-      'depois tente os botões "Detectar USB" ou "Testar impressora".'
-    );
-  }
+  if (!isConnected) throw new Error('isPrinterConnected retornou false');
 
   for (let copy = 0; copy < copies; copy++) {
     for (const line of text.split('\n')) {
@@ -51,55 +163,35 @@ export async function printReceipt(text: string, config: PrinterConfig, copies =
     printer.cut();
     await printer.execute();
     printer.clear();
-
-    if (copy < copies - 1) {
-      await new Promise(r => setTimeout(r, 600));
-    }
+    if (copy < copies - 1) await new Promise(r => setTimeout(r, 600));
   }
 }
 
-export async function testConnection(config: PrinterConfig): Promise<boolean> {
-  const printer = new ThermalPrinter({
-    type: getPrinterType(config.model),
-    interface: config.interface,
-    options: { timeout: 4000 },
-  });
-  return printer.isPrinterConnected();
-}
-
-/* ───── Detecção USB no Windows ───── */
+/* ─── Detecção USB no Windows ─── */
 
 interface RawPrinter { name: string; portName: string }
 
 function detectViaPowerShell(): RawPrinter[] {
   try {
-    // Get-Printer é nativo no Windows 8+, mais confiável que WMIC (que está deprecado no Win11)
     const cmd =
       'powershell.exe -NoProfile -NonInteractive -Command ' +
       '"Get-Printer | Where-Object { $_.PortName -match \'^USB\' } | ' +
       'Select-Object Name,PortName | ConvertTo-Json -Compress"';
-
     const out = execSync(cmd, { encoding: 'utf8', timeout: 8000, windowsHide: true }).trim();
     if (!out) return [];
-
     const parsed = JSON.parse(out);
     const arr = Array.isArray(parsed) ? parsed : [parsed];
     return arr
-      .filter((p: any) => p && p.PortName && p.Name)
-      .map((p: any) => ({ name: String(p.Name), portName: String(p.PortName).toUpperCase() }));
-  } catch {
-    return [];
-  }
+      .filter((p: Record<string, unknown>) => p && p.PortName && p.Name)
+      .map((p: Record<string, unknown>) => ({ name: String(p.Name), portName: String(p.PortName).toUpperCase() }));
+  } catch { return []; }
 }
 
 function detectViaWmic(): RawPrinter[] {
   try {
     const out = execSync('wmic printer get name,portname /format:csv', {
-      encoding: 'utf8',
-      timeout: 6000,
-      windowsHide: true,
+      encoding: 'utf8', timeout: 6000, windowsHide: true,
     });
-
     const found: RawPrinter[] = [];
     for (const line of out.split(/\r?\n/)) {
       const parts = line.trim().split(',');
@@ -110,9 +202,7 @@ function detectViaWmic(): RawPrinter[] {
       found.push({ name, portName: portName.toUpperCase() });
     }
     return found;
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function probeUsbPort(portNum: number): boolean {
@@ -121,61 +211,31 @@ function probeUsbPort(portNum: number): boolean {
     const fd = fs.openSync(`\\\\.\\${portName}`, 'w');
     fs.closeSync(fd);
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 export function detectUsbPrinters(): DetectedPrinter[] {
   const result: DetectedPrinter[] = [];
   const seen = new Set<string>();
 
-  // 1. PowerShell (Windows 8+)
-  for (const p of detectViaPowerShell()) {
+  for (const p of [...detectViaPowerShell(), ...detectViaWmic()]) {
     if (seen.has(p.portName)) continue;
     seen.add(p.portName);
-    result.push({
-      port: `//./${p.portName}`,
-      portName: p.portName,
-      label: `${p.name} — ${p.portName}`,
-    });
+    result.push({ port: `//./${p.portName}`, portName: p.portName, label: `${p.name} — ${p.portName}` });
   }
 
-  // 2. WMIC (fallback p/ Windows mais antigo)
-  if (result.length === 0) {
-    for (const p of detectViaWmic()) {
-      if (seen.has(p.portName)) continue;
-      seen.add(p.portName);
-      result.push({
-        port: `//./${p.portName}`,
-        portName: p.portName,
-        label: `${p.name} — ${p.portName}`,
-      });
-    }
-  }
-
-  // 3. Probe direto: testa USB001-005 mesmo sem driver Windows
   for (let i = 1; i <= 5; i++) {
-    const portName = `USB${String(i).padStart(3, '0')}`;
-    if (seen.has(portName)) continue;
+    const pn = `USB${String(i).padStart(3, '0')}`;
+    if (seen.has(pn)) continue;
     if (probeUsbPort(i)) {
-      seen.add(portName);
-      result.push({
-        port: `//./${portName}`,
-        portName,
-        label: `${portName} — impressora detectada (sem driver Windows)`,
-      });
+      seen.add(pn);
+      result.push({ port: `//./${pn}`, portName: pn, label: `${pn} — detectada sem driver Windows` });
     }
   }
 
-  // 4. Sem nada encontrado: sempre sugere USB001/002/003 como pontos de partida
   if (result.length === 0) {
-    for (const portName of ['USB001', 'USB002', 'USB003']) {
-      result.push({
-        port: `//./${portName}`,
-        portName,
-        label: `${portName} — tente esta porta (use "Testar" para confirmar)`,
-      });
+    for (const pn of ['USB001', 'USB002', 'USB003']) {
+      result.push({ port: `//./${pn}`, portName: pn, label: `${pn} — tente esta porta` });
     }
   }
 

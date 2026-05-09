@@ -2,7 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } from 'electron';
 import path from 'path';
 import { store } from './store';
 import { startPoller, restartPoller, stopPoller } from './poller';
-import { testConnection, detectUsbPrinters } from './printer';
+import { printTestPage, detectUsbPrinters } from './printer';
 
 let tray: Tray | null = null;
 let configWindow: BrowserWindow | null = null;
@@ -160,14 +160,13 @@ ipcMain.handle('test-printer', async (_event, config: {
   }
 
   try {
-    const connected = await testConnection({ type, interface: iface, model });
-    return {
-      ok: connected,
-      error: connected ? null : 'Impressora não respondeu. Verifique se está ligada e no endereço correto.',
-    };
+    // Envia uma página de teste real — se imprimir, a impressora está funcionando
+    await printTestPage({ type, interface: iface, model });
+    return { ok: true };
   } catch (err) {
     console.error('[main] test-printer erro:', err);
-    return { ok: false, error: err instanceof Error ? err.message : 'Erro desconhecido' };
+    const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+    return { ok: false, error: msg };
   }
 });
 

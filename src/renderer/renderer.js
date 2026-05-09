@@ -115,9 +115,9 @@
     const result = $('testResult');
 
     btn.disabled = true;
-    btn.textContent = 'Testando...';
+    btn.textContent = 'Imprimindo...';
     result.className = 'test-result info';
-    result.textContent = '… testando conexão com a impressora …';
+    result.textContent = '… enviando página de teste para a impressora …';
 
     const config = getCurrentPrinterConfig();
     console.log('[testPrinter] config:', config);
@@ -126,7 +126,7 @@
       result.className = 'test-result fail';
       result.textContent = '✗ Preencha a porta USB ou o IP da impressora antes de testar.';
       btn.disabled = false;
-      btn.textContent = 'Testar impressora';
+      btn.textContent = '🖨️ Imprimir página de teste';
       return;
     }
 
@@ -135,7 +135,7 @@
       console.log('[testPrinter] resultado:', res);
       if (res.ok) {
         result.className = 'test-result ok';
-        result.textContent = '✓ Impressora encontrada e respondendo!';
+        result.textContent = '✓ Página de teste enviada! Verifique se a impressora imprimiu.';
       } else {
         result.className = 'test-result fail';
         result.textContent = '✗ ' + (res.error || 'Impressora não respondeu');
@@ -146,7 +146,7 @@
       result.textContent = '✗ Erro: ' + (err && err.message ? err.message : err);
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Testar impressora';
+      btn.textContent = '🖨️ Imprimir página de teste';
     }
   }
 
