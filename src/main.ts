@@ -161,7 +161,8 @@ ipcMain.handle('test-printer', async (_event, config: {
 
   try {
     // Envia uma página de teste real — se imprimir, a impressora está funcionando
-    await printTestPage({ type, interface: iface, model });
+    const printerName = (store.get('printerName') ?? '').trim() || undefined;
+    await printTestPage({ type, interface: iface, model, printerName });
     return { ok: true };
   } catch (err) {
     console.error('[main] test-printer erro:', err);

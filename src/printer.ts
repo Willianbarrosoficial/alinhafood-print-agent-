@@ -10,6 +10,7 @@ export interface PrinterConfig {
   type: 'usb' | 'tcp';
   interface: string;
   model?: string;
+  printerName?: string;
 }
 
 export interface DetectedPrinter {
@@ -56,30 +57,39 @@ function extractPortName(devicePath: string): string {
     .replace(/[/\\]+$/, '');         // remove trailing slashes
 }
 
-/* ─── USB: grava arquivo temp e usa "copy /b" do cmd.exe ───
- * Node.js fs adiciona \ no final de device paths (bug do libuv/GetFullPathName).
- * PowerShell spawna processo suspeito para antivírus.
- * cmd.exe + copy /b é a forma menos suspeita e funciona com portas de impressora.
+/* ─── USB: usa print.exe + Windows Spooler (não acesso direto à porta) ───
+ * Quando o driver está instalado, o spooler segura a porta e bloqueia
+ * escrita direta (acesso negado). print.exe envia via fila de impressão
+ * que é o caminho correto. É um utilitário built-in do Windows, não
+ * spawna PowerShell (não dispara antivírus).
+ *
+ * print.exe aceita tanto nome de porta (USB001) quanto nome da impressora
+ * (ex: "Epson TM-T20"). Se houver "printerName" preenchido, usa ele
+ * (mais confiável); senão usa o nome da porta.
  */
-function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 8000): Promise<void> {
-  const portName = extractPortName(devicePath); // "USB001"
-  console.log('[printer] rawWriteUsb port:', portName);
+function rawWriteUsb(target: { port: string; printerName?: string }, data: Buffer, timeoutMs = 12000): Promise<void> {
+  const targetName = (target.printerName && target.printerName.trim())
+    ? target.printerName.trim()
+    : extractPortName(target.port);
+
+  console.log('[printer] rawWriteUsb via print.exe → ', JSON.stringify(targetName));
 
   const tmpFile = path.join(os.tmpdir(), `alf_${Date.now()}.prn`);
   fs.writeFileSync(tmpFile, data);
 
   return new Promise((resolve, reject) => {
     try {
-      // copy /b grava bytes raw na porta de impressora sem passar por GetFullPathName
-      execFileSync('cmd.exe', ['/c', 'copy', '/b', tmpFile, portName], {
+      // print /D:device file - envia via spooler do Windows
+      execFileSync('print.exe', [`/D:${targetName}`, tmpFile], {
         timeout: timeoutMs,
         windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
       resolve();
     } catch (err: unknown) {
       const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
       const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
-      reject(new Error(`Falha ao enviar para ${portName}: ${detail || 'porta não encontrada'}`));
+      reject(new Error(`Falha ao imprimir em "${targetName}": ${detail || 'spooler indisponível'}`));
     } finally {
       try { fs.unlinkSync(tmpFile); } catch { /* ignora */ }
     }
@@ -121,7 +131,7 @@ export async function printTestPage(config: PrinterConfig): Promise<void> {
   if (config.type === 'tcp') {
     await rawWriteTcp(config.interface, data);
   } else {
-    await rawWriteUsb(config.interface, data);
+    await rawWriteUsb({ port: config.interface, printerName: config.printerName }, data);
   }
 }
 
@@ -137,8 +147,8 @@ export async function printReceipt(text: string, config: PrinterConfig, copies =
         await rawWriteTcp(config.interface, data);
       }
     } else {
-      // USB: sempre usa PowerShell raw (Node.js fs não suporta device paths)
-      await rawWriteUsb(config.interface, data);
+      // USB: via print.exe + spooler do Windows
+      await rawWriteUsb({ port: config.interface, printerName: config.printerName }, data);
     }
     if (i < copies - 1) await new Promise(r => setTimeout(r, 600));
   }

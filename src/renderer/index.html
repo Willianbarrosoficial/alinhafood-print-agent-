@@ -280,8 +280,14 @@
       </div>
 
       <div class="field">
-        <label>Nome da impressora (opcional)</label>
-        <input type="text" id="printerName" placeholder="Ex: Impressora da cozinha" />
+        <label>Nome da impressora no Windows</label>
+        <input type="text" id="printerName" placeholder="Ex: EPSON TM-T20" />
+        <div class="field-hint">
+          Use exatamente o mesmo nome que aparece em <strong>Painel de Controle → Dispositivos e Impressoras</strong>.<br>
+          Quando há driver instalado, o Windows bloqueia escrita direta na porta —
+          o agente envia pela fila de impressão usando este nome.<br>
+          <span style="color:#64748b">Clique em "Detectar USB" para preencher automaticamente.</span>
+        </div>
       </div>
 
       <div>

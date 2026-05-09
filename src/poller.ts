@@ -75,9 +75,10 @@ async function processJob(job: PrintJob): Promise<void> {
   emit('printing', `Imprimindo pedido #${job.order_id.slice(0, 8).toUpperCase()}...`);
 
   try {
+    const printerName = (store.get('printerName') ?? '').trim() || undefined;
     await printReceipt(
       job.payload.receipt_text,
-      { type: printerType, interface: printerInterface, model: printerModel },
+      { type: printerType, interface: printerInterface, model: printerModel, printerName },
       Math.min(job.copies, 5)
     );
 

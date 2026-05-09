@@ -193,6 +193,11 @@
 
         item.addEventListener('click', function () {
           $('printerInterface').value = p.port;
+          // Extrai o nome da impressora do label "Epson TM-T20 — USB001"
+          const nameMatch = p.label.match(/^(.+?)\s+—\s+USB\d+/i);
+          if (nameMatch) {
+            $('printerName').value = nameMatch[1].trim();
+          }
           const items = list.querySelectorAll('.detected-item');
           for (let j = 0; j < items.length; j++) items[j].classList.remove('selected');
           item.classList.add('selected');
