@@ -37,6 +37,7 @@
     ],
     "win": {
       "publisherName": "Alinhafood",
+      "signingHashAlgorithms": ["sha256"],
       "target": [
         {
           "target": "nsis",
