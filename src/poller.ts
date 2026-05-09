@@ -50,15 +50,30 @@ async function fetchJobs(): Promise<PrintJob[]> {
   return json.jobs ?? [];
 }
 
-async function markJob(jobId: string, status: 'completed' | 'failed', errorMessage?: string): Promise<void> {
+async function markJob(
+  jobId: string,
+  status: 'pending' | 'completed' | 'failed',
+  errorMessage?: string
+): Promise<void> {
   const apiUrl = store.get('apiUrl');
   const token = store.get('agentToken');
 
-  await fetch(`${apiUrl}/api/print/jobs/${jobId}`, {
+  const res = await fetch(`${apiUrl}/api/print/jobs/${jobId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, error_message: errorMessage }),
   });
+
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const json = await res.json() as { error?: string };
+      if (json?.error) detail = json.error;
+    } catch {
+      /* mantém detalhe HTTP */
+    }
+    throw new Error(`Falha ao atualizar job: ${detail}`);
+  }
 }
 
 async function processJob(job: PrintJob): Promise<void> {
@@ -86,11 +101,12 @@ async function processJob(job: PrintJob): Promise<void> {
     emit('polling', `Pedido #${job.order_id.slice(0, 8).toUpperCase()} impresso com sucesso`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
-    if (job.attempts + 1 >= MAX_ATTEMPTS) {
+    if (job.attempts >= MAX_ATTEMPTS) {
       await markJob(job.id, 'failed', message);
       emit('error', `Falha ao imprimir após ${MAX_ATTEMPTS} tentativas: ${message}`);
     } else {
-      emit('error', `Erro ao imprimir (tentativa ${job.attempts + 1}): ${message}`);
+      await markJob(job.id, 'pending', message);
+      emit('error', `Erro ao imprimir (tentativa ${job.attempts}/${MAX_ATTEMPTS}). Nova tentativa em instantes: ${message}`);
     }
   }
 }

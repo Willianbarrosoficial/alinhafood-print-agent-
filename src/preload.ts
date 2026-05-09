@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('api', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('save-config', config),
-  testPrinter: (config: { type: string; interface: string; model: string }) =>
+  testPrinter: (config: { type: string; interface: string; model: string; printerName?: string }) =>
     ipcRenderer.invoke('test-printer', config),
   detectUsbPrinters: () => ipcRenderer.invoke('detect-usb-printers'),
   clearConfig: () => ipcRenderer.invoke('clear-config'),

@@ -149,6 +149,7 @@ ipcMain.handle('test-printer', async (_event, config: {
   type?: string;
   interface?: string;
   model?: string;
+  printerName?: string;
 }) => {
   console.log('[main] test-printer recebido:', config);
   const iface = (config?.interface ?? store.get('printerInterface') ?? '').trim();
@@ -161,7 +162,7 @@ ipcMain.handle('test-printer', async (_event, config: {
 
   try {
     // Envia uma página de teste real — se imprimir, a impressora está funcionando
-    const printerName = (store.get('printerName') ?? '').trim() || undefined;
+    const printerName = (config?.printerName ?? store.get('printerName') ?? '').trim() || undefined;
     await printTestPage({ type, interface: iface, model, printerName });
     return { ok: true };
   } catch (err) {

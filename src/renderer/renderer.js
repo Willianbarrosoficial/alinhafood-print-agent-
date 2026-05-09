@@ -27,6 +27,7 @@
       type:      $('printerType').value,
       interface: getActiveInterface(),
       model:     $('printerModel').value,
+      printerName: $('printerName').value.trim(),
     };
   }
 
