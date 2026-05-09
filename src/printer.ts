@@ -56,33 +56,34 @@ function toWindowsDevicePath(p: string): string {
   return p.replace(/\/+$/, '').replace(/\\+$/, ''); // remove trailing slashes
 }
 
-/* ─── USB: escreve raw via fs ─── */
+/* ─── USB: escreve raw via fs.open com O_WRONLY ─── */
+// fs.createWriteStream usa flag 'w' que inclui O_CREAT, fazendo o libuv
+// tratar o caminho como arquivo comum e adicionar separador no device path.
+// fs.open com O_WRONLY mapeia para OPEN_EXISTING no Windows (sem O_CREAT),
+// que é o modo correto para abrir device paths como \\.\USB001.
 function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 6000): Promise<void> {
   const winPath = toWindowsDevicePath(devicePath);
   console.log('[printer] rawWriteUsb path:', JSON.stringify(winPath));
 
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Timeout: impressora não respondeu em ' + timeoutMs / 1000 + 's')), timeoutMs);
+    const timer = setTimeout(
+      () => reject(new Error('Timeout: impressora não respondeu em ' + timeoutMs / 1000 + 's')),
+      timeoutMs
+    );
 
-    const stream = fs.createWriteStream(winPath);
+    // O_WRONLY sem O_CREAT = OPEN_EXISTING no Windows
+    fs.open(winPath, fs.constants.O_WRONLY, (openErr, fd) => {
+      if (openErr) {
+        clearTimeout(timer);
+        reject(openErr);
+        return;
+      }
 
-    stream.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-
-    stream.on('open', () => {
-      stream.write(data, (err) => {
-        if (err) {
-          clearTimeout(timer);
-          stream.destroy();
-          reject(err);
-          return;
-        }
-        stream.end(() => {
-          clearTimeout(timer);
-          resolve();
-        });
+      fs.write(fd, data, 0, data.length, null, (writeErr) => {
+        fs.close(fd, () => { /* ignora erro de close */ });
+        clearTimeout(timer);
+        if (writeErr) reject(writeErr);
+        else resolve();
       });
     });
   });

@@ -222,6 +222,16 @@
     $('testBtn').addEventListener('click', testPrinter);
     $('detectBtn').addEventListener('click', detectUsb);
     $('closeBtn').addEventListener('click', function () { window.close(); });
+    $('clearBtn').addEventListener('click', async function () {
+      if (!confirm('Limpar todas as configurações?')) return;
+      await window.api.clearConfig();
+      $('apiUrl').value = '';
+      $('agentToken').value = '';
+      $('printerInterface').value = '';
+      $('printerInterfaceTcp').value = '';
+      $('printerName').value = '';
+      setStatus('disconnected', 'Configurações limpas');
+    });
 
     if (window.api && window.api.onStatus) {
       window.api.onStatus(function (status, message) {

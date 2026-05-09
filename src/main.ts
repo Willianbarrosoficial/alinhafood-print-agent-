@@ -170,6 +170,15 @@ ipcMain.handle('test-printer', async (_event, config: {
   }
 });
 
+ipcMain.handle('clear-config', () => {
+  store.set('apiUrl', '');
+  store.set('agentToken', '');
+  store.set('printerInterface', '');
+  store.set('printerName', '');
+  restartPoller();
+  return { ok: true };
+});
+
 ipcMain.handle('detect-usb-printers', () => {
   console.log('[main] detect-usb-printers chamado');
   try {
