@@ -46,12 +46,25 @@ function buildReceiptBytes(text: string): Buffer {
   ]);
 }
 
+/* ─── converte //./USB001 → \\.\USB001 (formato nativo Windows) ─── */
+function toWindowsDevicePath(p: string): string {
+  // Node.js normaliza //./USB001 adicionando \ no final, quebrando o device path.
+  // Usamos o formato nativo com barras invertidas para evitar normalização.
+  if (p.startsWith('//./') || p.startsWith('//.\\')) {
+    return '\\\\.\\' + p.slice(4).replace(/\//g, '\\').replace(/\\+$/, '');
+  }
+  return p.replace(/\/+$/, '').replace(/\\+$/, ''); // remove trailing slashes
+}
+
 /* ─── USB: escreve raw via fs ─── */
 function rawWriteUsb(devicePath: string, data: Buffer, timeoutMs = 6000): Promise<void> {
+  const winPath = toWindowsDevicePath(devicePath);
+  console.log('[printer] rawWriteUsb path:', JSON.stringify(winPath));
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timeout: impressora não respondeu em ' + timeoutMs / 1000 + 's')), timeoutMs);
 
-    const stream = fs.createWriteStream(devicePath);
+    const stream = fs.createWriteStream(winPath);
 
     stream.on('error', (err) => {
       clearTimeout(timer);
@@ -145,9 +158,10 @@ function getPrinterType(model?: string): PrinterTypes {
 }
 
 async function printViaThermal(text: string, config: PrinterConfig, copies: number): Promise<void> {
+  const iface = config.type === 'usb' ? toWindowsDevicePath(config.interface) : config.interface;
   const printer = new ThermalPrinter({
     type: getPrinterType(config.model),
-    interface: config.interface,
+    interface: iface,
     removeSpecialCharacters: false,
     lineCharacter: '-',
     options: { timeout: 5000 },
