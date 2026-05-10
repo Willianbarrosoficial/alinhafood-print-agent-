@@ -7,7 +7,7 @@ import os from 'os';
 import path from 'path';
 
 export interface PrinterConfig {
-  type: 'usb' | 'tcp';
+  type: 'usb' | 'windows' | 'serial' | 'tcp';
   interface: string;
   model?: string;
   printerName?: string;
@@ -16,7 +16,19 @@ export interface PrinterConfig {
 export interface DetectedPrinter {
   port: string;
   portName: string;
+  printerName?: string;
+  driverName?: string;
+  connectionType?: string;
+  printerStatus?: string;
+  isDefault?: boolean;
+  isRecommended?: boolean;
+  recommendationReason?: string;
   label: string;
+}
+
+interface SerialTarget {
+  portName: string;
+  baudRate: number;
 }
 
 /* ─── ESC/POS raw bytes ─── */
@@ -169,6 +181,58 @@ function rawWriteUsb(target: { port: string; printerName?: string }, data: Buffe
   });
 }
 
+function parseSerialInterface(value: string): SerialTarget {
+  const cleanValue = value.trim();
+  const match = cleanValue.match(/^(?:[/\\]+\.?[/\\]+)?(COM\d+)(?::(\d+))?$/i);
+  if (!match) {
+    throw new Error('Porta serial inválida. Use o formato COM5 ou COM5:9600.');
+  }
+
+  const baudRate = parseInt(match[2] ?? '9600', 10);
+  if (!Number.isFinite(baudRate) || baudRate <= 0) {
+    throw new Error('Velocidade serial inválida. Use 9600, 19200, 38400, 57600 ou 115200.');
+  }
+
+  return { portName: match[1].toUpperCase(), baudRate };
+}
+
+function configureSerialPort(target: SerialTarget): void {
+  if (process.platform !== 'win32') return;
+
+  execFileSync('mode.com', [
+    `${target.portName}:`,
+    `BAUD=${target.baudRate}`,
+    'PARITY=N',
+    'DATA=8',
+    'STOP=1',
+  ], {
+    timeout: 5000,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function rawWriteSerial(serialInterface: string, data: Buffer): Promise<void> {
+  const target = parseSerialInterface(serialInterface);
+  const devicePath = `\\\\.\\${target.portName}`;
+
+  return new Promise((resolve, reject) => {
+    try {
+      configureSerialPort(target);
+      const fd = fs.openSync(devicePath, 'w');
+      try {
+        fs.writeSync(fd, data, 0, data.length);
+      } finally {
+        fs.closeSync(fd);
+      }
+      resolve();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(`Falha ao imprimir via serial ${target.portName}:${target.baudRate}: ${message}`));
+    }
+  });
+}
+
 /* ─── TCP: escreve raw via net.Socket ─── */
 function rawWriteTcp(hostport: string, data: Buffer, timeoutMs = 6000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -203,6 +267,8 @@ export async function printTestPage(config: PrinterConfig): Promise<void> {
   const data = buildTestPageBytes();
   if (config.type === 'tcp') {
     await rawWriteTcp(config.interface, data);
+  } else if (config.type === 'serial') {
+    await rawWriteSerial(config.interface, data);
   } else {
     await rawWriteUsb({ port: config.interface, printerName: config.printerName }, data);
   }
@@ -218,6 +284,8 @@ export async function printReceipt(text: string, config: PrinterConfig, copies =
       } catch {
         await rawWriteTcp(config.interface, data);
       }
+    } else if (config.type === 'serial') {
+      await rawWriteSerial(config.interface, data);
     } else {
       await rawWriteUsb({ port: config.interface, printerName: config.printerName }, data);
     }
@@ -235,7 +303,7 @@ function getPrinterType(model?: string): PrinterTypes {
 }
 
 async function printViaThermal(text: string, config: PrinterConfig, copies: number): Promise<void> {
-  if (config.type === 'usb') throw new Error('USB usa raw path — usar rawWriteUsb');
+  if (config.type !== 'tcp') throw new Error('Somente TCP usa node-thermal-printer');
   const printer = new ThermalPrinter({
     type: getPrinterType(config.model),
     interface: config.interface,
@@ -258,44 +326,307 @@ async function printViaThermal(text: string, config: PrinterConfig, copies: numb
   }
 }
 
-/* ─── Detecção USB no Windows ─── */
+/* ─── Detecção de impressoras no Windows ─── */
 
-interface RawPrinter { name: string; portName: string }
+interface RawPrinter {
+  name: string;
+  portName: string;
+  driverName?: string;
+  printerStatus?: string;
+  isDefault?: boolean;
+  isOffline?: boolean;
+}
+
+interface RawSerialPort {
+  portName: string;
+  name?: string;
+  description?: string;
+  pnpDeviceId?: string;
+}
 
 /* PowerShell Get-Printer — leitura simples, não usa Add-Type/P-Invoke */
-function detectViaPowerShell(): RawPrinter[] {
+function detectViaPowerShell(onlyUsb = false): RawPrinter[] {
   try {
     const cmd =
       'powershell.exe -NoProfile -NonInteractive -Command ' +
-      '"Get-Printer | Where-Object { $_.PortName -match \'^USB\' } | ' +
-      'Select-Object Name,PortName | ConvertTo-Json -Compress"';
+      '"Get-CimInstance Win32_Printer | Select-Object Name,PortName,DriverName,PrinterStatus,Default,WorkOffline | ConvertTo-Json -Compress"';
     const out = execSync(cmd, { encoding: 'utf8', timeout: 8000, windowsHide: true }).trim();
     if (!out) return [];
     const parsed = JSON.parse(out) as unknown;
     const arr = Array.isArray(parsed) ? parsed : [parsed];
     return (arr as Record<string, unknown>[])
       .filter(p => p && p['PortName'] && p['Name'])
-      .map(p => ({ name: String(p['Name']), portName: String(p['PortName']).toUpperCase() }));
+      .map(p => ({
+        name: String(p['Name']).trim(),
+        portName: String(p['PortName']).trim(),
+        driverName: p['DriverName'] ? String(p['DriverName']).trim() : undefined,
+        printerStatus: p['PrinterStatus'] ? normalizePrinterStatus(String(p['PrinterStatus'])) : undefined,
+        isDefault: Boolean(p['Default']),
+        isOffline: Boolean(p['WorkOffline']),
+      }))
+      .filter(p => !onlyUsb || /^USB\d+$/i.test(p.portName));
   } catch { return []; }
 }
 
+function parseWmicCsv(out: string): Record<string, string>[] {
+  const lines = out.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',').map(header => header.trim().toLowerCase());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(',');
+    const row: Record<string, string> = {};
+    for (let i = 0; i < headers.length; i++) {
+      row[headers[i]] = (cells[i] ?? '').trim();
+    }
+    return row;
+  });
+}
+
+function parseBoolean(value?: string): boolean {
+  return /^(true|1|yes)$/i.test(value ?? '');
+}
+
+function normalizePrinterStatus(value: string): string {
+  const statusMap: Record<string, string> = {
+    '1': 'Outro',
+    '2': 'Desconhecido',
+    '3': 'Pronta',
+    '4': 'Imprimindo',
+    '5': 'Aquecendo',
+    '6': 'Parada',
+    '7': 'Offline',
+  };
+  return statusMap[value] ?? value;
+}
+
 /* WMIC — fallback para Windows sem PowerShell ou Get-Printer */
-function detectViaWmic(): RawPrinter[] {
+function detectViaWmic(onlyUsb = false): RawPrinter[] {
   try {
-    const out = execSync('wmic printer get name,portname /format:csv', {
+    const out = execSync('wmic printer get name,portname,drivername,printerstatus,default,workoffline /format:csv', {
       encoding: 'utf8', timeout: 6000, windowsHide: true,
     });
     const found: RawPrinter[] = [];
-    for (const line of out.split(/\r?\n/)) {
-      const parts = line.trim().split(',');
-      if (parts.length < 3) continue;
-      const name = parts[1]?.trim() ?? '';
-      const portName = parts[2]?.trim() ?? '';
-      if (!portName || portName === 'PortName' || !/^USB\d+$/i.test(portName)) continue;
-      found.push({ name, portName: portName.toUpperCase() });
+    for (const row of parseWmicCsv(out)) {
+      const driverName = row.drivername ?? '';
+      const name = row.name ?? '';
+      const portName = row.portname ?? '';
+      if (!portName || portName === 'PortName') continue;
+      if (onlyUsb && !/^USB\d+$/i.test(portName)) continue;
+      found.push({
+        name,
+        portName,
+        driverName,
+        printerStatus: row.printerstatus ? normalizePrinterStatus(row.printerstatus) : undefined,
+        isDefault: parseBoolean(row.default),
+        isOffline: parseBoolean(row.workoffline),
+      });
     }
     return found;
   } catch { return []; }
+}
+
+function isVirtualPrinter(printer: RawPrinter): boolean {
+  const haystack = `${printer.name} ${printer.driverName ?? ''} ${printer.portName}`.toLowerCase();
+  return [
+    'microsoft print to pdf',
+    'microsoft xps',
+    'onenote',
+    'fax',
+    'pdfcreator',
+    'send to onenote',
+  ].some(token => haystack.includes(token));
+}
+
+function classifyConnection(portName: string): string {
+  if (/^USB\d+$/i.test(portName)) return 'USB';
+  if (/^COM\d+$/i.test(portName)) return 'Bluetooth/Serial';
+  if (/^BTH/i.test(portName) || /bluetooth/i.test(portName)) return 'Bluetooth';
+  if (/^\d{1,3}(\.\d{1,3}){3}/.test(portName) || /^IP_/i.test(portName)) return 'Rede';
+  return 'Windows';
+}
+
+function getRecommendation(printer: RawPrinter, connectionType: string): { recommended: boolean; reason?: string; score: number } {
+  const haystack = `${printer.name} ${printer.driverName ?? ''}`.toLowerCase();
+  const thermalTokens = [
+    'thermal',
+    'receipt',
+    'cupom',
+    'esc/pos',
+    'pos',
+    'epson',
+    'elgin',
+    'tanca',
+    'daruma',
+    'bematech',
+    'sweda',
+    'star',
+    'tm-',
+    'mp-',
+    'mtp',
+    'i7',
+    'i8',
+    'i9',
+  ];
+  const hasThermalHint = thermalTokens.some(token => haystack.includes(token));
+  let score = 0;
+  if (hasThermalHint) score += 100;
+  if (['USB', 'Bluetooth', 'Bluetooth/Serial'].includes(connectionType)) score += 30;
+  if (printer.isDefault) score += 10;
+  if (printer.isOffline) score -= 40;
+
+  if (hasThermalHint) return { recommended: true, reason: 'provável térmica ESC/POS', score };
+  return { recommended: false, score };
+}
+
+function getConnectionRank(connectionType: string): number {
+  switch (connectionType) {
+    case 'USB': return 0;
+    case 'Bluetooth': return 1;
+    case 'Bluetooth/Serial': return 2;
+    case 'Rede': return 3;
+    default: return 4;
+  }
+}
+
+function toDetectedPrinter(printer: RawPrinter): DetectedPrinter {
+  const portName = printer.portName.trim();
+  const connectionType = classifyConnection(portName);
+  const recommendation = getRecommendation(printer, connectionType);
+  const driverInfo = printer.driverName ? ` — ${printer.driverName}` : '';
+  const port = /^USB\d+$/i.test(portName) || /^COM\d+$/i.test(portName)
+    ? `//./${portName.toUpperCase()}`
+    : portName;
+
+  return {
+    port,
+    portName,
+    printerName: printer.name,
+    driverName: printer.driverName,
+    connectionType,
+    printerStatus: printer.isOffline ? 'Offline' : printer.printerStatus,
+    isDefault: printer.isDefault,
+    isRecommended: recommendation.recommended,
+    recommendationReason: recommendation.reason,
+    label: `${printer.name} — ${portName} (${connectionType})${driverInfo}`,
+  };
+}
+
+function sortDetectedPrinters(printers: DetectedPrinter[]): DetectedPrinter[] {
+  return printers.sort((a, b) => {
+    if (a.isRecommended !== b.isRecommended) return a.isRecommended ? -1 : 1;
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+    const connectionDiff = getConnectionRank(a.connectionType ?? '') - getConnectionRank(b.connectionType ?? '');
+    if (connectionDiff !== 0) return connectionDiff;
+    return (a.printerName ?? a.label).localeCompare(b.printerName ?? b.label, 'pt-BR');
+  });
+}
+
+function detectSerialViaPowerShell(): RawSerialPort[] {
+  try {
+    const cmd =
+      'powershell.exe -NoProfile -NonInteractive -Command ' +
+      '"Get-CimInstance Win32_SerialPort | Select-Object DeviceID,Name,Description,PNPDeviceID | ConvertTo-Json -Compress"';
+    const out = execSync(cmd, { encoding: 'utf8', timeout: 8000, windowsHide: true }).trim();
+    if (!out) return [];
+    const parsed = JSON.parse(out) as unknown;
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    return (arr as Record<string, unknown>[])
+      .filter(p => p && p['DeviceID'])
+      .map(p => ({
+        portName: String(p['DeviceID']).trim().toUpperCase(),
+        name: p['Name'] ? String(p['Name']).trim() : undefined,
+        description: p['Description'] ? String(p['Description']).trim() : undefined,
+        pnpDeviceId: p['PNPDeviceID'] ? String(p['PNPDeviceID']).trim() : undefined,
+      }))
+      .filter(p => /^COM\d+$/i.test(p.portName));
+  } catch { return []; }
+}
+
+function detectSerialViaWmic(): RawSerialPort[] {
+  try {
+    const out = execSync('wmic path Win32_SerialPort get DeviceID,Name,Description,PNPDeviceID /format:csv', {
+      encoding: 'utf8', timeout: 6000, windowsHide: true,
+    });
+    const found: RawSerialPort[] = [];
+    for (const row of parseWmicCsv(out)) {
+      const portName = (row.deviceid ?? '').trim().toUpperCase();
+      if (!/^COM\d+$/i.test(portName)) continue;
+      found.push({
+        portName,
+        name: row.name,
+        description: row.description,
+        pnpDeviceId: row.pnpdeviceid,
+      });
+    }
+    return found;
+  } catch { return []; }
+}
+
+function isLikelyBluetoothSerial(port: RawSerialPort): boolean {
+  const haystack = `${port.name ?? ''} ${port.description ?? ''} ${port.pnpDeviceId ?? ''}`.toLowerCase();
+  return haystack.includes('bluetooth') || haystack.includes('bth') || haystack.includes('standard serial over bluetooth');
+}
+
+function serialPortToDetectedPrinter(port: RawSerialPort): DetectedPrinter {
+  const isBluetooth = isLikelyBluetoothSerial(port);
+  const displayName = port.name || port.description || `${port.portName} serial`;
+  return {
+    port: `${port.portName}:9600`,
+    portName: port.portName,
+    printerName: displayName,
+    driverName: port.description,
+    connectionType: isBluetooth ? 'Bluetooth/Serial' : 'Serial',
+    printerStatus: 'Porta COM',
+    isRecommended: isBluetooth,
+    recommendationReason: isBluetooth ? 'Bluetooth SPP/COM' : undefined,
+    label: `${displayName} — ${port.portName} (${isBluetooth ? 'Bluetooth/Serial' : 'Serial'})`,
+  };
+}
+
+export function detectSerialPorts(): DetectedPrinter[] {
+  const result: DetectedPrinter[] = [];
+  const seen = new Set<string>();
+
+  for (const p of [...detectSerialViaPowerShell(), ...detectSerialViaWmic()]) {
+    if (seen.has(p.portName)) continue;
+    seen.add(p.portName);
+    result.push(serialPortToDetectedPrinter(p));
+  }
+
+  return sortDetectedPrinters(result);
+}
+
+export function detectWindowsPrinters(): DetectedPrinter[] {
+  const result: DetectedPrinter[] = [];
+  const seen = new Set<string>();
+  const seenPorts = new Set<string>();
+
+  for (const p of [...detectViaPowerShell(false), ...detectViaWmic(false)]) {
+    if (!p.name || !p.portName || isVirtualPrinter(p)) continue;
+    const key = `${p.name.toLowerCase()}|${p.portName.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    seenPorts.add(p.portName.toUpperCase());
+    result.push(toDetectedPrinter(p));
+  }
+
+  for (let i = 1; i <= 5; i++) {
+    const pn = `USB${String(i).padStart(3, '0')}`;
+    if (seenPorts.has(pn)) continue;
+    if (probeUsbPort(i)) {
+      seenPorts.add(pn);
+      result.push({
+        port: `//./${pn}`,
+        portName: pn,
+        connectionType: 'USB',
+        printerStatus: 'Porta detectada',
+        label: `${pn} — detectada sem driver Windows`,
+      });
+    }
+  }
+
+  return sortDetectedPrinters(result);
 }
 
 function probeUsbPort(portNum: number): boolean {
@@ -311,10 +642,10 @@ export function detectUsbPrinters(): DetectedPrinter[] {
   const result: DetectedPrinter[] = [];
   const seen = new Set<string>();
 
-  for (const p of [...detectViaPowerShell(), ...detectViaWmic()]) {
+  for (const p of [...detectViaPowerShell(true), ...detectViaWmic(true)]) {
     if (seen.has(p.portName)) continue;
     seen.add(p.portName);
-    result.push({ port: `//./${p.portName}`, portName: p.portName, label: `${p.name} — ${p.portName}` });
+    result.push(toDetectedPrinter({ ...p, portName: p.portName.toUpperCase() }));
   }
 
   for (let i = 1; i <= 5; i++) {

@@ -16,10 +16,21 @@ Agente desktop para impressão automática de notinhas térmicas no Windows.
 - .NET SDK ou Build Tools com `csc.exe` (para gerar o helper RAW na build Windows)
 - Impressora térmica ESC/POS (Elgin, Epson, Bematech, Daruma, Tanca, etc.)
 
-## Impressão USB no Windows
+## Impressão USB/Bluetooth no Windows
 
-Para USB, o agente prioriza um helper nativo `AlinhafoodRawPrinter.exe`, empacotado
-no instalador, que envia os bytes ESC/POS ao spooler com `pDataType="RAW"`.
+Para impressoras instaladas no Windows, incluindo USB e Bluetooth pareadas com
+driver/fila de impressão, o agente prioriza um helper nativo
+`AlinhafoodRawPrinter.exe`, empacotado no instalador, que envia os bytes ESC/POS
+ao spooler com `pDataType="RAW"`.
+
+A detecção lista as filas reais do Windows com nome, porta, driver, status,
+tipo de conexão e destaque para impressoras provavelmente térmicas ESC/POS.
+Impressoras virtuais comuns, como PDF/XPS/Fax/OneNote, são ocultadas da lista.
+
+Quando a impressora Bluetooth não aparece como fila do Windows, mas cria uma
+porta serial, use o modo **Bluetooth Serial (porta COM)**. O agente configura a
+porta com `mode.com` e envia ESC/POS diretamente para `COMx`. A configuração é
+salva no formato `COM5:9600`, usando `9600` como velocidade padrão.
 
 Se o helper não estiver disponível, o agente ainda faz fallback para `print.exe`.
 Esse fallback existe por compatibilidade, mas o caminho recomendado para produção
@@ -66,8 +77,8 @@ automaticamente quando encontra o certificado configurado.
 3. Preencha:
    - **URL do painel**: endereço do site do restaurante (ex: `https://seurestaurante.alinhafood.com.br`)
    - **Token**: gerado em Admin → Impressora → Agente de Impressão → "Gerar token"
-   - **Tipo de conexão**: USB ou Rede (TCP/IP)
-   - **Interface**: `//./USB001` para USB, ou `192.168.1.100:9100` para rede
+   - **Tipo de conexão**: Impressora instalada no Windows, Bluetooth Serial (COM) ou Rede (TCP/IP)
+   - **Interface**: selecione pela detecção do Windows, use `COM5:9600` para serial, ou `192.168.1.100:9100` para rede
 4. Clique em "Testar impressora" para verificar a conexão
 5. Clique em "Salvar e conectar"
 

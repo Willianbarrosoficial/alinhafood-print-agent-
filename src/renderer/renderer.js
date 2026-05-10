@@ -19,7 +19,18 @@
   function getActiveInterface() {
     const type = $('printerType').value;
     if (type === 'tcp') return $('printerInterfaceTcp').value.trim();
+    if (type === 'serial') {
+      const port = $('printerInterfaceSerial').value.trim().toUpperCase();
+      const baud = $('serialBaudRate').value;
+      return port ? port + ':' + baud : '';
+    }
     return $('printerInterface').value.trim();
+  }
+
+  function parseSerialInterface(value) {
+    const match = String(value || '').trim().match(/^(?:[/\\]+\.?[/\\]+)?(COM\d+)(?::(\d+))?$/i);
+    if (!match) return { port: '', baudRate: '9600' };
+    return { port: match[1].toUpperCase(), baudRate: match[2] || '9600' };
   }
 
   function getCurrentPrinterConfig() {
@@ -31,15 +42,37 @@
     };
   }
 
+  function appendBadge(parent, className, text) {
+    if (!text) return;
+    const badge = document.createElement('span');
+    badge.className = className;
+    badge.textContent = text;
+    parent.appendChild(badge);
+  }
+
+  function getStatusClass(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized.includes('offline') || normalized.includes('parada')) return 'status-badge hot';
+    if (normalized.includes('desconhecido') || normalized.includes('outro')) return 'status-badge warn';
+    return 'status-badge';
+  }
+
   function onPrinterTypeChange() {
     const type    = $('printerType').value;
     const usbInfo = $('usbInfo');
+    const serialInfo = $('serialInfo');
     const tcpInfo = $('tcpInfo');
     if (type === 'tcp') {
       usbInfo.style.display = 'none';
+      serialInfo.style.display = 'none';
       tcpInfo.style.display = 'block';
+    } else if (type === 'serial') {
+      usbInfo.style.display = 'none';
+      serialInfo.style.display = 'block';
+      tcpInfo.style.display = 'none';
     } else {
       usbInfo.style.display = 'block';
+      serialInfo.style.display = 'none';
       tcpInfo.style.display = 'none';
     }
   }
@@ -54,12 +87,17 @@
     }
     try {
       const config = await window.api.getConfig();
+      const printerType = config.printerType === 'usb' ? 'windows' : (config.printerType || 'windows');
       $('apiUrl').value         = config.apiUrl         || '';
       $('agentToken').value     = config.agentToken     || '';
-      $('printerType').value    = config.printerType    || 'usb';
+      $('printerType').value    = printerType;
       $('printerModel').value   = config.printerModel   || 'epson';
-      if (config.printerType === 'tcp') {
+      if (printerType === 'tcp') {
         $('printerInterfaceTcp').value = config.printerInterface || '';
+      } else if (printerType === 'serial') {
+        const serial = parseSerialInterface(config.printerInterface || '');
+        $('printerInterfaceSerial').value = serial.port;
+        $('serialBaudRate').value = serial.baudRate;
       } else {
         $('printerInterface').value = config.printerInterface || '';
       }
@@ -125,7 +163,7 @@
 
     if (!config.interface) {
       result.className = 'test-result fail';
-      result.textContent = '✗ Preencha a porta USB ou o IP da impressora antes de testar.';
+      result.textContent = '✗ Selecione uma impressora, porta COM ou IP antes de testar.';
       btn.disabled = false;
       btn.textContent = '🖨️ Imprimir página de teste';
       return;
@@ -151,8 +189,61 @@
     }
   }
 
-  async function detectUsb() {
-    console.log('[detectUsb] iniciando...');
+  function renderDetectedPrinters(list, printers) {
+    list.innerHTML = '';
+
+    for (let i = 0; i < printers.length; i++) {
+      const p = printers[i];
+      const item = document.createElement('div');
+      item.className = 'detected-item';
+
+      const main = document.createElement('div');
+      main.className = 'detected-main';
+
+      const name = document.createElement('span');
+      name.className = 'detected-name';
+      name.textContent = p.printerName || p.label || p.portName;
+      main.appendChild(name);
+
+      if (p.isRecommended) appendBadge(main, 'detected-recommended', p.recommendationReason || 'provável térmica');
+      if (p.isDefault) appendBadge(main, 'status-badge', 'padrão');
+      item.appendChild(main);
+
+      const meta = document.createElement('div');
+      meta.className = 'detected-meta';
+      appendBadge(meta, 'type-badge', p.connectionType || 'Windows');
+      appendBadge(meta, 'port-badge', p.portName);
+      appendBadge(meta, getStatusClass(p.printerStatus), p.printerStatus);
+      item.appendChild(meta);
+
+      if (p.driverName) {
+        const driver = document.createElement('div');
+        driver.className = 'detected-driver';
+        driver.textContent = 'Driver: ' + p.driverName;
+        item.appendChild(driver);
+      }
+
+      item.addEventListener('click', function () {
+        if ($('printerType').value === 'serial') {
+          const serial = parseSerialInterface(p.port || p.portName);
+          $('printerInterfaceSerial').value = serial.port;
+          $('serialBaudRate').value = serial.baudRate;
+          $('printerName').value = '';
+        } else {
+          $('printerInterface').value = p.port;
+          $('printerName').value = (p.printerName || '').trim();
+        }
+        const items = list.querySelectorAll('.detected-item');
+        for (let j = 0; j < items.length; j++) items[j].classList.remove('selected');
+        item.classList.add('selected');
+      });
+
+      list.appendChild(item);
+    }
+  }
+
+  async function detectPrinters() {
+    console.log('[detectPrinters] iniciando...');
     const btn  = $('detectBtn');
     const list = $('detectedList');
 
@@ -160,11 +251,12 @@
     btn.textContent = '🔍 Detectando...';
     list.innerHTML = '';
     list.className = 'detected-list visible';
-    list.innerHTML = '<div style="font-size:12px;color:#475569;padding:6px 0">… buscando impressoras conectadas …</div>';
+    list.innerHTML = '<div style="font-size:12px;color:#475569;padding:6px 0">… buscando impressoras instaladas no Windows …</div>';
 
     try {
-      const res = await window.api.detectUsbPrinters();
-      console.log('[detectUsb] resultado:', res);
+      const detect = window.api.detectWindowsPrinters || window.api.detectUsbPrinters;
+      const res = await detect();
+      console.log('[detectPrinters] resultado:', res);
       const printers = (res && res.printers) || [];
 
       list.innerHTML = '';
@@ -172,49 +264,61 @@
       if (printers.length === 0) {
         list.innerHTML =
           '<div style="font-size:12px;color:#ef4444;padding:6px 0">' +
-          'Nenhuma impressora USB encontrada.<br>' +
-          'Verifique se a impressora está <strong>ligada</strong> e o <strong>cabo USB conectado</strong>.' +
+          'Nenhuma impressora instalada no Windows foi encontrada.<br>' +
+          'Verifique se ela aparece em <strong>Dispositivos e Impressoras</strong>.' +
           '</div>';
         return;
       }
 
-      for (let i = 0; i < printers.length; i++) {
-        const p = printers[i];
-        const item = document.createElement('div');
-        item.className = 'detected-item';
-
-        const badge = document.createElement('span');
-        badge.className = 'port-badge';
-        badge.textContent = p.portName;
-        item.appendChild(badge);
-
-        const label = document.createElement('span');
-        label.textContent = p.label;
-        item.appendChild(label);
-
-        item.addEventListener('click', function () {
-          $('printerInterface').value = p.port;
-          // Extrai o nome da impressora do label "Epson TM-T20 — USB001"
-          const nameMatch = p.label.match(/^(.+?)\s+—\s+USB\d+/i);
-          if (nameMatch) {
-            $('printerName').value = nameMatch[1].trim();
-          }
-          const items = list.querySelectorAll('.detected-item');
-          for (let j = 0; j < items.length; j++) items[j].classList.remove('selected');
-          item.classList.add('selected');
-        });
-
-        list.appendChild(item);
-      }
+      renderDetectedPrinters(list, printers);
     } catch (err) {
-      console.error('[detectUsb] erro:', err);
+      console.error('[detectPrinters] erro:', err);
       list.innerHTML =
         '<div style="font-size:12px;color:#ef4444;padding:6px 0">' +
         'Erro na detecção: ' + (err && err.message ? err.message : err) +
         '</div>';
     } finally {
       btn.disabled = false;
-      btn.textContent = '🔍 Detectar USB';
+      btn.textContent = '🔍 Detectar impressoras';
+    }
+  }
+
+  async function detectSerialPorts() {
+    console.log('[detectSerialPorts] iniciando...');
+    const btn  = $('serialDetectBtn');
+    const list = $('serialDetectedList');
+
+    btn.disabled = true;
+    btn.textContent = '🔍 Detectando...';
+    list.innerHTML = '';
+    list.className = 'detected-list visible';
+    list.innerHTML = '<div style="font-size:12px;color:#475569;padding:6px 0">… buscando portas COM …</div>';
+
+    try {
+      const res = await window.api.detectSerialPorts();
+      console.log('[detectSerialPorts] resultado:', res);
+      const ports = (res && res.printers) || [];
+      list.innerHTML = '';
+
+      if (ports.length === 0) {
+        list.innerHTML =
+          '<div style="font-size:12px;color:#ef4444;padding:6px 0">' +
+          'Nenhuma porta COM encontrada.<br>' +
+          'Confirme o pareamento Bluetooth e a porta de saída nas configurações do Windows.' +
+          '</div>';
+        return;
+      }
+
+      renderDetectedPrinters(list, ports);
+    } catch (err) {
+      console.error('[detectSerialPorts] erro:', err);
+      list.innerHTML =
+        '<div style="font-size:12px;color:#ef4444;padding:6px 0">' +
+        'Erro na detecção: ' + (err && err.message ? err.message : err) +
+        '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔍 Detectar COM';
     }
   }
 
@@ -226,7 +330,8 @@
     $('printerType').addEventListener('change', onPrinterTypeChange);
     $('saveBtn').addEventListener('click', saveConfig);
     $('testBtn').addEventListener('click', testPrinter);
-    $('detectBtn').addEventListener('click', detectUsb);
+    $('detectBtn').addEventListener('click', detectPrinters);
+    $('serialDetectBtn').addEventListener('click', detectSerialPorts);
     $('closeBtn').addEventListener('click', function () { window.close(); });
     $('clearBtn').addEventListener('click', async function () {
       if (!confirm('Limpar todas as configurações?')) return;
@@ -235,6 +340,8 @@
       $('agentToken').value = '';
       $('printerInterface').value = '';
       $('printerInterfaceTcp').value = '';
+      $('printerInterfaceSerial').value = '';
+      $('serialBaudRate').value = '9600';
       $('printerName').value = '';
       setStatus('disconnected', 'Configurações limpas');
     });

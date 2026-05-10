@@ -2,7 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } from 'electron';
 import path from 'path';
 import { store } from './store';
 import { startPoller, restartPoller, stopPoller } from './poller';
-import { printTestPage, detectUsbPrinters } from './printer';
+import { printTestPage, detectUsbPrinters, detectWindowsPrinters, detectSerialPorts } from './printer';
 
 let tray: Tray | null = null;
 let configWindow: BrowserWindow | null = null;
@@ -124,7 +124,7 @@ ipcMain.handle('get-config', () => ({
 ipcMain.handle('save-config', (_event, config: {
   apiUrl: string;
   agentToken: string;
-  printerType: 'usb' | 'tcp';
+  printerType: 'usb' | 'windows' | 'serial' | 'tcp';
   printerInterface: string;
   printerName: string;
   printerModel: 'epson' | 'star' | 'tanca' | 'daruma';
@@ -153,7 +153,7 @@ ipcMain.handle('test-printer', async (_event, config: {
 }) => {
   console.log('[main] test-printer recebido:', config);
   const iface = (config?.interface ?? store.get('printerInterface') ?? '').trim();
-  const type  = (config?.type      ?? store.get('printerType'))  as 'usb' | 'tcp';
+  const type  = (config?.type      ?? store.get('printerType'))  as 'usb' | 'windows' | 'serial' | 'tcp';
   const model = (config?.model     ?? store.get('printerModel')) as string;
 
   if (!iface) {
@@ -189,6 +189,30 @@ ipcMain.handle('detect-usb-printers', () => {
     return { printers };
   } catch (err) {
     console.error('[main] detect-usb-printers erro:', err);
+    return { printers: [], error: err instanceof Error ? err.message : 'Erro na detecção' };
+  }
+});
+
+ipcMain.handle('detect-windows-printers', () => {
+  console.log('[main] detect-windows-printers chamado');
+  try {
+    const printers = detectWindowsPrinters();
+    console.log('[main] detect-windows-printers resultado:', printers);
+    return { printers };
+  } catch (err) {
+    console.error('[main] detect-windows-printers erro:', err);
+    return { printers: [], error: err instanceof Error ? err.message : 'Erro na detecção' };
+  }
+});
+
+ipcMain.handle('detect-serial-ports', () => {
+  console.log('[main] detect-serial-ports chamado');
+  try {
+    const ports = detectSerialPorts();
+    console.log('[main] detect-serial-ports resultado:', ports);
+    return { printers: ports };
+  } catch (err) {
+    console.error('[main] detect-serial-ports erro:', err);
     return { printers: [], error: err instanceof Error ? err.message : 'Erro na detecção' };
   }
 });

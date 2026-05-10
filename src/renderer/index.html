@@ -170,7 +170,7 @@
     .detected-list.visible { display: flex; }
 
     .detected-item {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; flex-direction: column; gap: 5px;
       padding: 7px 10px; background: #f8fafc;
       border: 1px solid #e2e8f0; border-radius: 8px;
       cursor: pointer; font-size: 12px; color: #0f172a;
@@ -178,8 +178,34 @@
     }
     .detected-item:hover { background: #eff6ff; border-color: #93c5fd; }
     .detected-item.selected { background: #dbeafe; border-color: #3b82f6; }
-    .detected-item .port-badge {
-      background: #e0e7ff; color: #4338ca;
+    .detected-main {
+      display: flex; align-items: center; gap: 7px; width: 100%;
+    }
+    .detected-name {
+      font-weight: 700; color: #0f172a; flex: 1; min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .detected-meta {
+      display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+      color: #64748b; font-size: 11px; line-height: 1.35;
+    }
+    .detected-driver {
+      color: #64748b; font-size: 11px; line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .detected-item .port-badge,
+    .detected-item .type-badge,
+    .detected-item .status-badge {
+      font-weight: 700; font-size: 11px;
+      padding: 2px 7px; border-radius: 6px; flex-shrink: 0;
+    }
+    .detected-item .port-badge { background: #e0e7ff; color: #4338ca; }
+    .detected-item .type-badge { background: #dcfce7; color: #047857; }
+    .detected-item .status-badge { background: #f1f5f9; color: #475569; }
+    .detected-item .status-badge.warn { background: #fef3c7; color: #92400e; }
+    .detected-item .status-badge.hot { background: #fee2e2; color: #b91c1c; }
+    .detected-recommended {
+      background: #ecfeff; color: #0e7490;
       font-weight: 700; font-size: 11px;
       padding: 2px 7px; border-radius: 6px; flex-shrink: 0;
     }
@@ -243,29 +269,59 @@
       <div class="field">
         <label>Como a impressora está conectada?</label>
         <select id="printerType">
-          <option value="usb">Cabo USB (direto no computador)</option>
+          <option value="windows">Instalada no Windows (USB ou Bluetooth)</option>
+          <option value="serial">Bluetooth Serial (porta COM)</option>
           <option value="tcp">Rede Wi-Fi ou cabo de rede (TCP/IP)</option>
         </select>
       </div>
 
       <div id="usbInfo">
         <div class="info-box">
-          <strong>Impressora USB:</strong> clique em <strong>"Detectar USB"</strong> para encontrar automaticamente.<br>
-          Se não detectar, digite <strong>//./USB001</strong>, <strong>//./USB002</strong> ou <strong>//./USB003</strong><br>
-          <span style="color:#64748b;font-size:11px">Use "Testar impressora" para confirmar qual porta funciona</span>
+          <strong>Impressora instalada no Windows:</strong> clique em <strong>"Detectar impressoras"</strong> para listar filas USB e Bluetooth já pareadas.<br>
+          Para Bluetooth, primeiro pareie a impressora no Windows e confirme que ela aparece em <strong>Dispositivos e Impressoras</strong>.<br>
+          <span style="color:#64748b;font-size:11px">Use "Testar impressora" para confirmar se a fila selecionada aceita ESC/POS RAW</span>
         </div>
 
         <div class="row field" style="margin-bottom:8px">
           <div class="field">
-            <label>Porta USB</label>
-            <input type="text" id="printerInterface" placeholder="//./USB001" />
+            <label>Porta / fila do Windows</label>
+            <input type="text" id="printerInterface" placeholder="USB001, BTH001, COM5 ou porta do driver" />
           </div>
           <button type="button" class="btn-detect" id="detectBtn" style="margin-bottom:0;align-self:flex-end">
-            🔍 Detectar USB
+            🔍 Detectar impressoras
           </button>
         </div>
 
         <div class="detected-list" id="detectedList"></div>
+      </div>
+
+      <div id="serialInfo" style="display:none">
+        <div class="info-box">
+          <strong>Bluetooth Serial:</strong> use quando a impressora pareada cria uma porta <strong>COM</strong>, mas não aparece como impressora instalada no Windows.<br>
+          A velocidade mais comum é <strong>9600</strong>. Se não imprimir, teste <strong>19200</strong>, <strong>38400</strong>, <strong>57600</strong> ou <strong>115200</strong>.
+        </div>
+
+        <div class="row field" style="margin-bottom:8px">
+          <div class="field">
+            <label>Porta COM</label>
+            <input type="text" id="printerInterfaceSerial" placeholder="COM5" />
+          </div>
+          <div class="field" style="max-width:130px">
+            <label>Velocidade</label>
+            <select id="serialBaudRate">
+              <option value="9600">9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
+            </select>
+          </div>
+          <button type="button" class="btn-detect" id="serialDetectBtn" style="margin-bottom:0;align-self:flex-end">
+            🔍 Detectar COM
+          </button>
+        </div>
+
+        <div class="detected-list" id="serialDetectedList"></div>
       </div>
 
       <div id="tcpInfo" style="display:none">
@@ -281,12 +337,11 @@
 
       <div class="field">
         <label>Nome da impressora no Windows</label>
-        <input type="text" id="printerName" placeholder="Ex: EPSON TM-T20" />
+        <input type="text" id="printerName" placeholder="Ex: EPSON TM-T20 ou MTP-II" />
         <div class="field-hint">
           Use exatamente o mesmo nome que aparece em <strong>Painel de Controle → Dispositivos e Impressoras</strong>.<br>
-          Quando há driver instalado, o Windows bloqueia escrita direta na porta —
-          o agente envia pela fila de impressão usando este nome.<br>
-          <span style="color:#64748b">Clique em "Detectar USB" para preencher automaticamente.</span>
+          Para USB ou Bluetooth com driver instalado, o agente envia pela fila de impressão usando este nome.<br>
+          <span style="color:#64748b">No modo Bluetooth Serial, este campo é opcional.</span>
         </div>
       </div>
 

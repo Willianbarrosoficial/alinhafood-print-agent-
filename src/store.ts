@@ -3,7 +3,7 @@ import Store from 'electron-store';
 interface StoreSchema {
   apiUrl: string;
   agentToken: string;
-  printerType: 'usb' | 'tcp';
+  printerType: 'usb' | 'windows' | 'serial' | 'tcp';
   printerInterface: string;
   printerName: string;
   printerModel: 'epson' | 'star' | 'tanca' | 'daruma';
@@ -15,7 +15,7 @@ export const store = new Store<StoreSchema>({
   defaults: {
     apiUrl: '',
     agentToken: '',
-    printerType: 'usb',
+    printerType: 'windows',
     printerInterface: '',
     printerName: '',
     printerModel: 'epson',
