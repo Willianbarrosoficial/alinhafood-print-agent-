@@ -5,7 +5,7 @@
   "author": "Alinhafood",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/build-raw-printer-helper.cjs && tsc",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win nsis --x64 --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
@@ -33,6 +33,15 @@
       "dist/**/*",
       "src/renderer/**/*",
       "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "publisherName": "Alinhafood",

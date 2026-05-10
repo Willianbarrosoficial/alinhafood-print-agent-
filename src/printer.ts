@@ -57,36 +57,114 @@ function extractPortName(devicePath: string): string {
     .replace(/[/\\]+$/, '');
 }
 
-/* ─── USB via Windows Spooler com print.exe ───
- * print.exe é um utilitário built-in do Windows que envia arquivos para a fila
- * de impressão sem spawnar PowerShell (não dispara antivírus).
- * Aceita tanto nome de porta (USB001) quanto nome da impressora ("Epson TM-T20").
- * Se printerName estiver preenchido, usa o nome — mais confiável com drivers instalados.
- */
-function rawWriteUsb(target: { port: string; printerName?: string }, data: Buffer, timeoutMs = 12000): Promise<void> {
-  const targetName = (target.printerName && target.printerName.trim())
-    ? target.printerName.trim()
-    : extractPortName(target.port);
+function getRawHelperPath(): string | null {
+  const overridePath = (process.env.ALINHAFOOD_RAW_PRINTER_HELPER ?? '').trim();
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidatePaths = [
+    overridePath,
+    resourcesPath ? path.join(resourcesPath, 'bin', 'win-x64', 'AlinhafoodRawPrinter.exe') : '',
+    resourcesPath ? path.join(resourcesPath, 'bin', 'AlinhafoodRawPrinter.exe') : '',
+    path.join(__dirname, '..', 'bin', 'win-x64', 'AlinhafoodRawPrinter.exe'),
+    path.join(__dirname, '..', 'bin', 'AlinhafoodRawPrinter.exe'),
+  ].filter(Boolean);
 
-  console.log('[printer] rawWriteUsb via print.exe → ', JSON.stringify(targetName));
+  for (const candidate of candidatePaths) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function resolveConfiguredPrinterName(target: { port: string; printerName?: string }): string | undefined {
+  const configuredName = target.printerName?.trim();
+  if (configuredName) return configuredName;
+
+  const targetPortName = extractPortName(target.port).toUpperCase();
+  for (const printer of [...detectViaPowerShell(), ...detectViaWmic()]) {
+    if (printer.portName.toUpperCase() === targetPortName && printer.name.trim()) {
+      return printer.name.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function rawWriteUsbViaHelper(printerName: string, data: Buffer, timeoutMs: number): void {
+  const helperPath = getRawHelperPath();
+  if (!helperPath) {
+    throw new Error('Helper RAW do Windows nao encontrado no pacote.');
+  }
+
+  console.log('[printer] rawWriteUsb via helper RAW → ', JSON.stringify(printerName));
 
   const tmpFile = path.join(os.tmpdir(), `alf_${Date.now()}.prn`);
   fs.writeFileSync(tmpFile, data);
 
+  try {
+    execFileSync(helperPath, [printerName, tmpFile], {
+      timeout: timeoutMs,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err: unknown) {
+    const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
+    const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
+    throw new Error(`Falha ao imprimir RAW em "${printerName}": ${detail || 'helper indisponivel'}`);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* ignora */ }
+  }
+}
+
+/* ─── Fallback USB via Windows Spooler com print.exe ───
+ * print.exe continua como plano B quando o helper RAW nao estiver disponivel
+ * ou quando o nome da impressora nao puder ser resolvido.
+ */
+function rawWriteUsbViaPrintExe(targetName: string, data: Buffer, timeoutMs: number): void {
+  console.warn('[printer] fallback para print.exe → ', JSON.stringify(targetName));
+
+  const tmpFile = path.join(os.tmpdir(), `alf_${Date.now()}.prn`);
+  fs.writeFileSync(tmpFile, data);
+
+  try {
+    execFileSync('print.exe', [`/D:${targetName}`, tmpFile], {
+      timeout: timeoutMs,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err: unknown) {
+    const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
+    const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
+    throw new Error(`Falha ao imprimir em "${targetName}": ${detail || 'spooler indisponível'}`);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* ignora */ }
+  }
+}
+
+function rawWriteUsb(target: { port: string; printerName?: string }, data: Buffer, timeoutMs = 12000): Promise<void> {
+  const printerName = resolveConfiguredPrinterName(target);
+  const fallbackTarget = printerName || extractPortName(target.port);
+
   return new Promise((resolve, reject) => {
     try {
-      execFileSync('print.exe', [`/D:${targetName}`, tmpFile], {
-        timeout: timeoutMs,
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      if (process.platform === 'win32' && printerName) {
+        rawWriteUsbViaHelper(printerName, data, timeoutMs);
+      } else {
+        rawWriteUsbViaPrintExe(fallbackTarget, data, timeoutMs);
+      }
       resolve();
-    } catch (err: unknown) {
-      const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
-      const detail = (e?.stderr?.toString() || e?.stdout?.toString() || e?.message || '').trim();
-      reject(new Error(`Falha ao imprimir em "${targetName}": ${detail || 'spooler indisponível'}`));
-    } finally {
-      try { fs.unlinkSync(tmpFile); } catch { /* ignora */ }
+    } catch (err) {
+      if (process.platform === 'win32' && printerName) {
+        const primaryDetail = err instanceof Error ? err.message : String(err);
+        try {
+          rawWriteUsbViaPrintExe(fallbackTarget, data, timeoutMs);
+          resolve();
+          return;
+        } catch (fallbackErr) {
+          const fallbackDetail = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          reject(new Error(`${primaryDetail} Fallback print.exe também falhou: ${fallbackDetail}`));
+          return;
+        }
+      }
+      reject(err);
     }
   });
 }

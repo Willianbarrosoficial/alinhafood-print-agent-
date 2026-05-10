@@ -13,7 +13,17 @@ Agente desktop para impressão automática de notinhas térmicas no Windows.
 
 - Node.js 18+ (para build)
 - Windows 10/11 (para o executável final)
+- .NET SDK ou Build Tools com `csc.exe` (para gerar o helper RAW na build Windows)
 - Impressora térmica ESC/POS (Elgin, Epson, Bematech, Daruma, Tanca, etc.)
+
+## Impressão USB no Windows
+
+Para USB, o agente prioriza um helper nativo `AlinhafoodRawPrinter.exe`, empacotado
+no instalador, que envia os bytes ESC/POS ao spooler com `pDataType="RAW"`.
+
+Se o helper não estiver disponível, o agente ainda faz fallback para `print.exe`.
+Esse fallback existe por compatibilidade, mas o caminho recomendado para produção
+é validar a impressão física usando a build Windows com o helper RAW incluído.
 
 ## Desenvolvimento
 
