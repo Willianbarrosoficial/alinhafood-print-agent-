@@ -41,6 +41,20 @@ function commandExists(command) {
     : [];
 }
 
+function existingFiles(paths) {
+  return paths.filter((filePath) => filePath && fs.existsSync(filePath));
+}
+
+function getDotnetCandidates() {
+  return [
+    ...commandExists('dotnet'),
+    ...existingFiles([
+      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'dotnet', 'dotnet.exe'),
+      path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'dotnet', 'dotnet.exe'),
+    ]),
+  ];
+}
+
 function compileWithCsc(cscPath) {
   const result = run(cscPath, [
     '/nologo',
@@ -57,8 +71,8 @@ function compileWithCsc(cscPath) {
   }
 }
 
-function compileWithDotnet() {
-  const result = run('dotnet', [
+function compileWithDotnet(dotnetPath) {
+  const result = run(dotnetPath, [
     'publish',
     projectFile,
     '-c',
@@ -83,12 +97,13 @@ try {
     ...commandExists('csc.exe'),
     ...commandExists('csc'),
   ];
+  const dotnetCandidates = getDotnetCandidates();
 
   if (cscCandidates.length > 0) {
     compileWithCsc(cscCandidates[0]);
     console.log(`[raw-helper] Helper RAW compilado com csc.exe em ${exeFile}`);
-  } else if (commandExists('dotnet').length > 0) {
-    compileWithDotnet();
+  } else if (dotnetCandidates.length > 0) {
+    compileWithDotnet(dotnetCandidates[0]);
     console.log(`[raw-helper] Helper RAW compilado com dotnet publish em ${exeFile}`);
   } else {
     throw new Error(
