@@ -54,10 +54,16 @@ function buildTestPageBytes(): Buffer {
   ]);
 }
 
+function toPrinterSafeText(text: string): string {
+  return Array.from(text)
+    .filter(char => char.charCodeAt(0) <= 0xFF)
+    .join('');
+}
+
 function buildReceiptBytes(text: string): Buffer {
   return Buffer.concat([
     Buffer.from([ESC, 0x40]),             // reset
-    Buffer.from(text + '\n\n\n', 'latin1'),
+    Buffer.from(toPrinterSafeText(text) + '\n\n\n', 'latin1'),
     Buffer.from([GS, 0x56, 0x00]),        // corte
   ]);
 }
