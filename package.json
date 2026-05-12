@@ -47,7 +47,6 @@
       "publisherName": "Alinhafood",
       "signingHashAlgorithms": ["sha256"],
       "forceCodeSigning": false,
-      "requestedExecutionLevel": "requireAdministrator",
       "target": [
         {
           "target": "nsis",
