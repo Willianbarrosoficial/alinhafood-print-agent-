@@ -46,6 +46,8 @@
     "win": {
       "publisherName": "Alinhafood",
       "signingHashAlgorithms": ["sha256"],
+      "forceCodeSigning": false,
+      "requestedExecutionLevel": "requireAdministrator",
       "target": [
         {
           "target": "nsis",
@@ -61,7 +63,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Alinhafood Print Agent"
+      "shortcutName": "Alinhafood Print Agent",
+      "runAfterFinish": true
     },
     "mac": {
       "target": "dmg",

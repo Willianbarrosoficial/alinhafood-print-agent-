@@ -49,16 +49,70 @@ npm start
 npm run dist
 ```
 
-O instalador é gerado em `release/Alinhafood Print Agent Setup 1.0.0.exe`.
+O instalador é gerado em `release/AlinhafoodPrintAgent-Setup-1.0.0.exe`.
 
 Copie o `.exe` para `Alinhafood 01/public/downloads/AlinhafoodPrintAgent-Setup.exe`
 para disponibilizá-lo no link de download do painel admin.
 
-## Assinatura digital do Windows
+## ⚠️ Windows bloqueando o instalador (SmartScreen / Smart App Control)
 
-Para distribuição em clientes, gere o instalador com um certificado de code signing.
-Sem assinatura, o Windows Defender/SmartScreen pode bloquear o app por reputação baixa,
-principalmente por ser um app Electron que acessa a fila de impressão local.
+O Windows pode bloquear o instalador com uma das seguintes mensagens:
+- "O Windows protegeu o computador" (SmartScreen)
+- "Um controle de inteligência bloqueou o aplicativo" (Smart App Control)
+- "Este aplicativo não é seguro" (Windows Defender)
+
+Isso acontece porque o instalador **não possui certificado de assinatura digital**
+(code signing), o que é necessário para que o Windows confie no executável.
+
+### Solução rápida — Instalação assistida
+
+Use os scripts incluídos no projeto que desbloqueiam o instalador automaticamente:
+
+**Opção 1 — Script BAT (mais simples):**
+1. Clique direito em `instalar.bat`
+2. Selecione **"Executar como administrador"**
+3. O script desbloqueia o arquivo e inicia a instalação
+
+**Opção 2 — Script PowerShell (mais completo):**
+1. Clique direito em `desbloquear-e-instalar.ps1`
+2. Selecione **"Executar com PowerShell"** (como admin)
+3. O script verifica SmartScreen, Smart App Control, configura exclusões no Defender
+
+### Solução manual — Bypass do SmartScreen
+
+Se preferir instalar manualmente:
+
+1. Clique direito no `.exe` → **Propriedades**
+2. Na aba "Geral", marque **"Desbloquear"** no canto inferior → **OK**
+3. Execute o instalador novamente
+4. Se aparecer a tela do SmartScreen:
+   - Clique em **"Mais informações"**
+   - Clique em **"Executar assim mesmo"**
+
+### Solução manual — Smart App Control (Windows 11)
+
+Se o erro for do **Smart App Control** (diferente do SmartScreen):
+
+1. Abra **Configurações** → **Privacidade e segurança** → **Segurança do Windows**
+2. Clique em **Controle de aplicativos e navegador**
+3. Em **Smart App Control**, mude para **"Desativado"**
+
+> **Aviso:** Desativar o Smart App Control é permanente e não pode ser revertido
+> sem reinstalar o Windows. Considere isso antes de desativar.
+
+### Solução manual — Exclusão no Windows Defender
+
+Para evitar que o Defender bloqueie o app após a instalação:
+
+1. Abra **Segurança do Windows** → **Proteção contra vírus e ameaças**
+2. Em "Configurações", clique em **Gerenciar configurações**
+3. Role até **Exclusões** → **Adicionar ou remover exclusões**
+4. Adicione a pasta: `C:\Program Files\Alinhafood Print Agent`
+
+### Solução definitiva — Certificado Code Signing
+
+Para eliminar todos os avisos do Windows, adquira um certificado EV Code Signing
+de uma autoridade certificadora (Sectigo, DigiCert, GlobalSign — ~$300-500/ano).
 
 Configure estas variáveis no ambiente de build antes de rodar `npm run dist:win`:
 
