@@ -1,5 +1,16 @@
 # Alinhafood Print Agent
 
+> ⚠️ **APOSENTADO — não instale em loja nova.** Este agente Electron é legado e
+> não recebe mais correções de segurança além do mínimo. O substituto é o
+> **Alinhafood Print Agent oficial** (.NET, Windows e macOS), distribuído pelo
+> repositório público `Willianbarrosoficial/alinhafood-print-agent` e com
+> atualização automática. Loja que ainda usa este aqui deve migrar: gere um
+> token novo em Admin → Impressora → Agente e configure o agente oficial;
+> depois desinstale este.
+>
+> A partir desta versão a URL do painel só é aceita com `https://` — o token
+> do agente vai em toda chamada e, em `http://`, passaria em texto puro.
+
 Agente desktop para impressão automática de notinhas térmicas no Windows.
 
 ## Como funciona

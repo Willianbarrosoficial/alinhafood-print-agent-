@@ -1,3 +1,8 @@
 node_modules/
 dist/
 release/
+
+# Segredos: nunca no repositório (token do agente, certificado de assinatura)
+.env*
+*.pfx
+*.p12
