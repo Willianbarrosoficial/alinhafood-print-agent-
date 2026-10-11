@@ -120,6 +120,14 @@ async function poll(): Promise<void> {
     return;
   }
 
+  // Configuração salva antes da trava de https (ver save-config em main.ts)
+  // ainda pode estar em http://. Não manda o token assim — pede para salvar
+  // de novo, com https://.
+  if (!apiUrl.startsWith('https://')) {
+    emit('error', 'A URL do painel precisa começar com https://. Abra as configurações e salve de novo.');
+    return;
+  }
+
   try {
     const jobs = await fetchJobs();
     if (jobs.length === 0) {

@@ -134,6 +134,14 @@
     try {
       const res = await window.api.saveConfig(config);
       console.log('[saveConfig] resultado:', res);
+      // O processo principal recusa URL que não seja https:// (o token iria
+      // em texto puro). Sem esta checagem a tela diria "Salvo!" sem ter salvo.
+      if (res && res.ok === false) {
+        setStatus('error', res.error || 'Não foi possível salvar.');
+        btn.textContent = 'Salvar e conectar';
+        btn.disabled = false;
+        return;
+      }
       setStatus('polling', 'Configuração salva — conectando ao painel...');
       btn.textContent = '✓ Salvo!';
       setTimeout(() => {

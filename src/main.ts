@@ -54,7 +54,10 @@ function createConfigWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // O preload só usa contextBridge e ipcRenderer, que funcionam com o
+      // renderer em sandbox. Sem sandbox, uma falha no renderer (que exibe o
+      // token) ganharia acesso ao Node do processo.
+      sandbox: true,
     },
   });
 
@@ -121,6 +124,23 @@ ipcMain.handle('get-config', () => ({
   currentMessage,
 }));
 
+/**
+ * Devolve a URL do painel sem a barra final, ou null se não for https://.
+ * Aceita só o endereço base: credencial embutida (https://user:senha@...) é
+ * recusada para não ir parar no arquivo de configuração.
+ */
+function normalizarApiUrl(bruta: unknown): string | null {
+  if (typeof bruta !== 'string') return null;
+  let url: URL;
+  try {
+    url = new URL(bruta.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return null;
+  return url.origin + url.pathname.replace(/\/+$/, '');
+}
+
 ipcMain.handle('save-config', (_event, config: {
   apiUrl: string;
   agentToken: string;
@@ -131,7 +151,15 @@ ipcMain.handle('save-config', (_event, config: {
   autoStart: boolean;
 }) => {
   console.log('[main] save-config recebido');
-  store.set('apiUrl',           config.apiUrl.trim());
+  // O token do agente vai no cabeçalho de toda chamada. Em http:// ele passa
+  // em texto puro pela rede da loja (Wi-Fi aberto, roteador de terceiro) —
+  // por isso só se aceita https://. Conferido aqui, no processo principal,
+  // porque o renderer não é fonte de verdade.
+  const apiUrl = normalizarApiUrl(config.apiUrl);
+  if (!apiUrl) {
+    return { ok: false, error: 'A URL do painel precisa começar com https://' };
+  }
+  store.set('apiUrl',           apiUrl);
   store.set('agentToken',       config.agentToken.trim());
   store.set('printerType',      config.printerType);
   store.set('printerInterface', config.printerInterface.trim());
